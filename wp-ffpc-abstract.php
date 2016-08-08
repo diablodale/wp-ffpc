@@ -51,6 +51,7 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $admin_css_handle;
 	protected $admin_css_url;
 	protected $utils = null;
+	protected $fileapiform = null;
 
 	protected $donation_business_name;
 	protected $donation_item_name;
@@ -180,20 +181,61 @@ abstract class WP_FFPC_ABSTRACT {
 	abstract function plugin_admin_help( $contextual_help, $screen_id );
 
 	/**
+	 * initial setup of WP Filesystem API to get credentials
+	 */
+	protected function plugin_setup_fileapi() {
+		$credurl = wp_nonce_url($this->settings_link, 'wp-ffpc-fileapi', '_wpnonce-f');
+		ob_start();
+		if (false === ($creds = request_filesystem_credentials($credurl, '', false, WP_CONTENT_DIR, array_keys($_POST)) ) ) {
+			// if we get here, then we don't have credentials yet,
+			// request_filesystem_credentials() produced a form for the user to fill in
+			$this->fileapiform = ob_get_contents();
+			ob_end_clean();
+			return false; // stop the normal page from from displaying
+		}
+
+		// we have some credentials, check nonce if we previously produced a credential form and received a post
+		// BUGBUG maybe exit this w/ false if we don't get a hostname
+		if ( isset( $_POST[ 'hostname' ] ) && !check_admin_referer( 'wp-ffpc-fileapi', '_wpnonce-f' ) ) {
+			ob_end_flush();
+			return false;
+		}
+
+		// try to get the wp_filesystem running
+		if ( ! WP_Filesystem($creds) ) {
+			// credentials were not good; ask the user for them again
+			// BUGBUG may need to create new var holding the $_POST - old credential keys //  array_keys($_POST)
+			request_filesystem_credentials($credurl, '', true, WP_CONTENT_DIR, array_keys($_POST));
+			$this->fileapiform = ob_get_contents();
+			ob_end_clean();
+			return false; // stop the normal page from from displaying
+		}
+
+		// we have good credentials and the filesystem is ready on global $wp_filesystem
+		ob_end_clean();
+		return true;
+	}
+
+	/**
 	 * admin init called by WordPress add_action, needs to be public
 	 */
 	public function plugin_admin_init() {
-
+		/* add submenu to settings pages */
+		add_submenu_page( $this->settings_slug, $this->plugin_name . __translate__( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
+	
 		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_save ] ) && check_admin_referer( 'wp-ffpc-settings', '_wpnonce-s' ) ) {
-
+		if ( isset( $_POST[ $this->button_save ] ) ) {
+			if ( !$this->plugin_setup_fileapi() ) return;
+			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
 			$this->plugin_options_save();
 			$this->status = 1;
 			header( "Location: ". $this->settings_link . self::slug_save );
 		}
 
 		/* delete parameters if requested */
-		if ( isset( $_POST[ $this->button_delete ] ) && check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
+		if ( isset( $_POST[ $this->button_delete ] ) ) {
+			if ( !$this->plugin_setup_fileapi() ) return;
+			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();
 			$this->status = 2;
 			header( "Location: ". $this->settings_link . self::slug_delete );
@@ -201,9 +243,6 @@ abstract class WP_FFPC_ABSTRACT {
 
 		/* load additional moves */
 		$this->plugin_extend_admin_init();
-
-		/* add submenu to settings pages */
-		add_submenu_page( $this->settings_slug, $this->plugin_name . __translate__( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
 	}
 
 	/**

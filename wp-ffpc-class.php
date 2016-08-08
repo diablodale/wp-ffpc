@@ -418,6 +418,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		<?php
 
+		/* display any needed fileapi credential form */
+		if ( !is_null($this->fileapiform) ) {
+			echo $this->fileapiform;
+			return;
+		}
+
 		/* display donation form */
 		$this->plugin_donation_form();
 
@@ -485,7 +491,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		</div>
 		<form autocomplete="off" method="post" action="#" id="<?php echo $this->plugin_constant ?>-settings" class="plugin-admin">
 
-			<?php wp_nonce_field( 'wp-ffpc-settings', '_wpnonce-s'); ?>
+			<?php wp_nonce_field( 'wp-ffpc-save', '_wpnonce-s'); ?>
 
 			<?php $switcher_tabs = $this->plugin_admin_panel_get_tabs(); ?>
 			<ul class="tabs">
