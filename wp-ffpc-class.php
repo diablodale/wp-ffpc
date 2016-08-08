@@ -311,7 +311,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_extend_admin_init () {
 		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_flush ] ) && check_admin_referer ( 'wp-ffpc') ) {
+		if ( isset( $_POST[ $this->button_flush ] ) && check_admin_referer ( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
 			/* remove precache log entry */
 			static::_delete_option( self::precache_log  );
 			/* remove precache timestamp entry */
@@ -334,7 +334,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		}
 
 		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_precache ] ) && check_admin_referer ( 'wp-ffpc') ) {
+		if ( isset( $_POST[ $this->button_precache ] ) && check_admin_referer ( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
 			/* is no shell function is possible, fail */
 			if ( $this->shell_function == false ) {
 				$this->status = 5;
@@ -485,7 +485,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		</div>
 		<form autocomplete="off" method="post" action="#" id="<?php echo $this->plugin_constant ?>-settings" class="plugin-admin">
 
-			<?php wp_nonce_field( 'wp-ffpc'); ?>
+			<?php wp_nonce_field( 'wp-ffpc-settings', '_wpnonce-s'); ?>
 
 			<?php $switcher_tabs = $this->plugin_admin_panel_get_tabs(); ?>
 			<ul class="tabs">
@@ -870,7 +870,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		<form method="post" action="#" id="<?php echo $this->plugin_constant ?>-commands" class="plugin-admin" style="padding-top:2em;">
 
-			<?php wp_nonce_field( 'wp-ffpc'); ?>
+			<?php wp_nonce_field( 'wp-ffpc-admin', '_wpnonce-a' ); ?>
 
 			<ul class="tabs">
 				<li><a href="#<?php echo $this->plugin_constant ?>-precache" class="wp-switch-editor"><?php _e( 'Precache', 'wp-ffpc'); ?></a></li>

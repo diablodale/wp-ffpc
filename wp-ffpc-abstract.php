@@ -185,7 +185,7 @@ abstract class WP_FFPC_ABSTRACT {
 	public function plugin_admin_init() {
 
 		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_save ] ) && check_admin_referer( 'wp-ffpc') ) {
+		if ( isset( $_POST[ $this->button_save ] ) && check_admin_referer( 'wp-ffpc-settings', '_wpnonce-s' ) ) {
 
 			$this->plugin_options_save();
 			$this->status = 1;
@@ -193,7 +193,7 @@ abstract class WP_FFPC_ABSTRACT {
 		}
 
 		/* delete parameters if requested */
-		if ( isset( $_POST[ $this->button_delete ] ) && check_admin_referer( 'wp-ffpc') ) {
+		if ( isset( $_POST[ $this->button_delete ] ) && check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
 			$this->plugin_options_delete();
 			$this->status = 2;
 			header( "Location: ". $this->settings_link . self::slug_delete );
