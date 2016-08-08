@@ -27,8 +27,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	const port_separator  = ':';
 	const donation_id_key = 'hosted_button_id=';
 	const global_config_var = '$wp_ffpc_config';
-	const key_save = 'saved';
-	const key_delete = 'deleted';
 	const key_flush = 'flushed';
 	const slug_flush = '&flushed=true';
 	const key_precache = 'precached';
@@ -224,14 +222,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		/* look for global settings array */
 		if ( ! $this->global_saved )
-			$this->errors['no_global_saved'] = sprintf( __('This site was reached as %s ( according to PHP HTTP_HOST ) and there are no settings present for this domain in the WP-FFPC configuration yet. Please save the %s for the domain or fix the webserver configuration!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link);
-
-		/* look for writable acache file */
-		if ( file_exists ( $this->acache ) && ! is_writable ( $this->acache ) )
-			$this->errors['no_acache_write'] = sprintf(__('Advanced cache file (%s) is not writeable!<br />Please change the permissions on the file.', 'wp-ffpc'), $this->acache);
+			$this->errors['no_global_saved'] = sprintf( __('No WP-FFPC configuration settings are saved in the wordpress database for %s ( according to PHP HTTP_HOST ). Please configure and save the %s for this site!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link);
 
 		/* look for acache file */
-		if ( ! file_exists ( $this->acache ) )
+		if ( !array_key_exists('wp_ffpc_config', $GLOBALS) )
 			$this->errors['no_acache_saved'] = sprintf (__('Advanced cache file is yet to be generated, please save %s', 'wp-ffpc'), $settings_link );
 
 		/* look for extensions that should be available */
@@ -430,15 +424,15 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/**
 		 * if options were saved, display saved message
 		 */
-		if (isset($_GET[ self::key_save ]) && $_GET[ self::key_save ]=='true' || $this->status == 1) { ?>
-			<div class='updated settings-error'><p><strong><?php _e( 'Settings saved.' , 'wp-ffpc') ?></strong></p></div>
+		if ($this->status == 1) { ?>
+			<div class='updated settings-error'><p><strong><?php _e( 'Settings saved to database.' , 'wp-ffpc') ?></strong></p></div>
 		<?php }
 
 		/**
 		 * if options were delete, display delete message
 		 */
-		if (isset($_GET[ self::key_delete ]) && $_GET[ self::key_delete ]=='true' || $this->status == 2) { ?>
-			<div class='error'><p><strong><?php _e( 'Plugin options deleted.' , 'wp-ffpc') ?></strong></p></div>
+		if ($this->status == 2) { ?>
+			<div class='error'><p><strong><?php _e( 'Plugin options deleted from database.' , 'wp-ffpc') ?></strong></p></div>
 		<?php }
 
 		/**
@@ -1049,17 +1043,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	private function deploy_advanced_cache( ) {
 
-		if (!touch($this->acache)) {
-			error_log('Generating advanced-cache.php failed: '.$this->acache.' is not writable');
-			return false;
-		}
-
 		/* if no active site left no need for advanced cache :( */
 		if ( empty ( $this->global_config ) ) {
 			error_log('Generating advanced-cache.php failed: Global config is empty');
 			return false;
 		}
-
 
 		/* add the required includes and generate the needed code */
 		$string[] = "<?php";
@@ -1067,9 +1055,16 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		//$string[] = "include_once ('" . $this->acache_backend . "');";
 		$string[] = "include_once ('" . $this->acache_worker . "');";
 
-		/* write the file and start caching from this point */
-		return file_put_contents( $this->acache, join( "\n" , $string ) );
-
+		// touch() and is_writable() are both not reliable/implemented in the WP Filesystem API
+		// therefore must attempt write of file and then check for error
+		global $wp_filesystem;
+		$put_acache_success = $wp_filesystem->put_contents( $this->fileapiacache, join( "\n" , $string ), FS_CHMOD_FILE );
+		if (false === $put_acache_success)
+		{
+			static::alert( sprintf(__('Advanced cache file (%s) could not be written!<br />Please check the permissions and ownership of the wp-content directory and any existing advanced-cache.php file. Then save again.', 'wp-ffpc'), $this->acache), LOG_WARNING );
+			error_log('Generating advanced-cache.php failed: '.$this->acache.' is not writable');
+		}
+		return $put_acache_success;
 	}
 
 	/**

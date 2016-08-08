@@ -26,8 +26,6 @@ if (!class_exists('WP_FFPC_ABSTRACT')):
  */
 abstract class WP_FFPC_ABSTRACT {
 
-	const slug_save = '&saved=true';
-	const slug_delete = '&deleted=true';
 	const common_slug = 'wp-common/';
 
 	protected $plugin_constant;
@@ -52,6 +50,7 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $admin_css_url;
 	protected $utils = null;
 	protected $fileapiform = null;
+	protected $fileapiacache = '';
 
 	protected $donation_business_name;
 	protected $donation_item_name;
@@ -184,7 +183,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * initial setup of WP Filesystem API to get credentials
 	 */
 	protected function plugin_setup_fileapi() {
-		$credurl = wp_nonce_url($this->settings_link, 'wp-ffpc-fileapi', '_wpnonce-f');
+		$credurl = wp_nonce_url($this->settings_link, 'wp-ffpc-fileapi', '_wpnonce-f');		
 		ob_start();
 		if (false === ($creds = request_filesystem_credentials($credurl, '', false, WP_CONTENT_DIR, array_keys($_POST)) ) ) {
 			// if we get here, then we don't have credentials yet,
@@ -213,6 +212,8 @@ abstract class WP_FFPC_ABSTRACT {
 
 		// we have good credentials and the filesystem is ready on global $wp_filesystem
 		ob_end_clean();
+		global $wp_filesystem;
+		$this->fileapiacache = trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php';
 		return true;
 	}
 
@@ -227,18 +228,16 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( isset( $_POST[ $this->button_save ] ) ) {
 			if ( !$this->plugin_setup_fileapi() ) return;
 			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
-			$this->plugin_options_save();
+			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
 			$this->status = 1;
-			header( "Location: ". $this->settings_link . self::slug_save );
 		}
 
 		/* delete parameters if requested */
 		if ( isset( $_POST[ $this->button_delete ] ) ) {
 			if ( !$this->plugin_setup_fileapi() ) return;
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
-			$this->plugin_options_delete();
+			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
 			$this->status = 2;
-			header( "Location: ". $this->settings_link . self::slug_delete );
 		}
 
 		/* load additional moves */
