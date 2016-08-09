@@ -50,8 +50,7 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $admin_css_url;
 	protected $utils = null;
 	protected $fileapiform = null;
-	protected $fileapiacache = '';
-
+	
 	protected $donation_business_name;
 	protected $donation_item_name;
 	protected $donation_business_id;
@@ -188,8 +187,7 @@ abstract class WP_FFPC_ABSTRACT {
 		if (false === ($creds = request_filesystem_credentials($credurl, '', false, WP_CONTENT_DIR, array_keys($_POST)) ) ) {
 			// if we get here, then we don't have credentials yet,
 			// request_filesystem_credentials() produced a form for the user to fill in
-			$this->fileapiform = ob_get_contents();
-			ob_end_clean();
+			$this->fileapiform = ob_get_clean();
 			return false; // stop the normal page from from displaying
 		}
 
@@ -205,19 +203,25 @@ abstract class WP_FFPC_ABSTRACT {
 			// credentials were not good; ask the user for them again
 			// BUGBUG may need to create new var holding the $_POST - old credential keys //  array_keys($_POST)
 			request_filesystem_credentials($credurl, '', true, WP_CONTENT_DIR, array_keys($_POST));
-			$this->fileapiform = ob_get_contents();
-			ob_end_clean();
-			return false; // stop the normal page from from displaying
+			$this->fileapiform = ob_get_clean();
+			return false; // stop the normal page from displaying
 		}
 
 		// we have good credentials and the filesystem should be ready on global $wp_filesystem
-		ob_end_clean();
+		ob_end_flush();
 		global $wp_filesystem;
-		if ( ! is_object($wp_filesystem) )
-			return false;	// fs_unavailable; could not access filesystem
-		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() )
-			return false;	// other filesystem error
-		$this->fileapiacache = trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php';
+		if ( !is_object($wp_filesystem) ) {
+			//static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
+			error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
+			return;
+		}
+		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
+			//static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+			//	'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+				'(' . $wp_filesystem->errors->get_error_code() . ')');
+			return;
+		}
 		return true;
 	}
 
@@ -233,6 +237,11 @@ abstract class WP_FFPC_ABSTRACT {
 			if ( !$this->plugin_setup_fileapi() ) return;
 			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
 			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
+			// BUGBUG warnings like "No WP-FFPC configuration settings are saved..." are
+			// showing even though the apc file was written and it seems it was saved into the db.
+			// Often on the immediate page after the change. I believe this is
+			// due to the warning tests being evaluated before the changes to the db.
+			// This logic flow error was being masked by the Header(location) hack I previously removed
 			$this->status = 1;
 		}
 
@@ -241,6 +250,8 @@ abstract class WP_FFPC_ABSTRACT {
 			if ( !$this->plugin_setup_fileapi() ) return;
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
+			// BUGBUG same warning display problems as above
+			// BUGBUG need to update config here so the advanced-cache.php file is in sync with the db; e.g. $this->update_global_config( true );
 			$this->status = 2;
 		}
 

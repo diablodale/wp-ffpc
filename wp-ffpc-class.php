@@ -270,6 +270,43 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * deactivation hook function, to be extended
 	 */
 	public function plugin_deactivate () {
+		// setup WP filesystem API to be later used in deploy_advanced_cache()
+		// code leveraged from Wordpress core
+		$url = esc_url_raw(remove_query_arg( '_wpnonce' )) . '&_wpnonce='. wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file );
+		ob_start();
+		if ( false === ($credentials = request_filesystem_credentials($url)) ) {
+			$data = ob_get_clean();
+			if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
+			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			echo $data;
+			include( ABSPATH . 'wp-admin/admin-footer.php');
+			exit;
+		}
+
+		if ( !WP_Filesystem($credentials) ) {
+			request_filesystem_credentials($url, '', true); //Failed to connect, Error and request again
+			$data = ob_get_clean();
+			if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
+			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			echo $data;
+			include( ABSPATH . 'wp-admin/admin-footer.php');
+			exit;
+		}
+
+		global $wp_filesystem;
+		if ( !is_object($wp_filesystem) ) {
+			static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
+			error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
+			return;
+		}
+		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
+			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+				'(' . $wp_filesystem->errors->get_error_code() . ')');
+			return;
+		}
+
 		/* remove current site config from global config */
 		$this->update_global_config( true );
 	}
@@ -278,8 +315,18 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * uninstall hook function, to be extended
 	 */
 	public function plugin_uninstall( $delete_options = true ) {
-		/* delete advanced-cache.php file */
-		unlink ( $this->acache );
+		// Wordpress has already setup a working filesystem object earlier in the core codepath
+		// before this function is called; therefore only the most basic error handling is used here
+		global $wp_filesystem;
+		if ( is_object($wp_filesystem) ) {
+			// delete advanced-cache.php file
+			$delete_result = $wp_filesystem->delete( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php' );
+			if (false === $delete_result)
+				static::alert( sprintf(__('Advanced cache file (%s) could not be deleted.<br />Please manually delete this file', 'wp-ffpc'), $this->acache), LOG_WARNING );
+		}
+		else {
+			static::alert( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache), LOG_WARNING );			
+		}
 
 		/* delete site settings */
 		if ( $delete_options ) {
@@ -997,14 +1044,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	public function plugin_options_migrate( &$options ) {
 
 		if ( version_compare ( $options['version'] , $this->plugin_version, '<' ) ) {
-			/* cleanup possible leftover files from previous versions */
-			$check = array ( 'advanced-cache.php', 'nginx-sample.conf', 'wp-ffpc.admin.css', 'wp-ffpc-common.php' );
-			foreach ( $check as $fname ) {
-				$fname = $this->plugin_dir . $fname;
-				if ( file_exists ( $fname ) )
-					unlink ( $fname );
-			}
-
 			/* look for previous config leftovers */
 			$try = get_site_option( 'wp-ffpc');
 			/* network option key changed, remove & migrate the leftovers if there's any */
@@ -1042,29 +1081,41 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 *
 	 */
 	private function deploy_advanced_cache( ) {
-
+		global $wp_filesystem;
+		
+		/* add the required includes and generate the needed code */
 		/* if no active site left no need for advanced cache :( */
 		if ( empty ( $this->global_config ) ) {
-			error_log('Generating advanced-cache.php failed: Global config is empty');
-			return false;
+			$string[] = "";
 		}
-
-		/* add the required includes and generate the needed code */
-		$string[] = "<?php";
-		$string[] = self::global_config_var . ' = ' . var_export ( $this->global_config, true ) . ';' ;
-		//$string[] = "include_once ('" . $this->acache_backend . "');";
-		$string[] = "include_once ('" . $this->acache_worker . "');";
+		else {
+			$string[] = "<?php";
+			$string[] = self::global_config_var . ' = ' . var_export ( $this->global_config, true ) . ';' ;
+			//$string[] = "include_once ('" . $this->acache_backend . "');";
+			$string[] = "include_once ('" . $this->acache_worker . "');";
+		}
 
 		// touch() and is_writable() are both not reliable/implemented in the WP Filesystem API
 		// therefore must attempt write of file and then check for error
-		global $wp_filesystem;
-		$put_acache_success = $wp_filesystem->put_contents( $this->fileapiacache, join( "\n" , $string ), FS_CHMOD_FILE );
+		$put_acache_success = $wp_filesystem->put_contents( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php', join( "\n" , $string ), FS_CHMOD_FILE );
 		if (false === $put_acache_success)
 		{
 			static::alert( sprintf(__('Advanced cache file (%s) could not be written!<br />Please check the permissions and ownership of the wp-content directory and any existing advanced-cache.php file. Then save again.', 'wp-ffpc'), $this->acache), LOG_WARNING );
 			error_log('Generating advanced-cache.php failed: '.$this->acache.' is not writable');
+			return false;
 		}
-		return $put_acache_success;
+
+		/* cleanup possible leftover files from previous plugin versions */
+		$remote_dir = $wp_filesystem->find_folder($this->plugin_dir);
+		if (false !== $remote_dir) {
+			$remote_dir = trailingslashit( $remote_dir );
+			$check = array ( 'nginx-sample.conf', 'wp-ffpc.admin.css', 'wp-ffpc-common.php' );
+			foreach ( $check as $fname ) {
+				$fname = $remote_dir . $fname;
+				$wp_filesystem->delete( $fname );	// TODO should I put @ before call to hide errors?
+			}
+		}		
+		return true;
 	}
 
 	/**
