@@ -210,9 +210,13 @@ abstract class WP_FFPC_ABSTRACT {
 			return false; // stop the normal page from from displaying
 		}
 
-		// we have good credentials and the filesystem is ready on global $wp_filesystem
+		// we have good credentials and the filesystem should be ready on global $wp_filesystem
 		ob_end_clean();
 		global $wp_filesystem;
+		if ( ! is_object($wp_filesystem) )
+			return false;	// fs_unavailable; could not access filesystem
+		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() )
+			return false;	// other filesystem error
 		$this->fileapiacache = trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php';
 		return true;
 	}
@@ -284,7 +288,7 @@ abstract class WP_FFPC_ABSTRACT {
 	}
 
 	/**
-	 * hook to add functionality into plugin_options_read
+	 * hook to add functionality into plugin_options_delete
 	 */
 	abstract function plugin_extend_options_delete ();
 
