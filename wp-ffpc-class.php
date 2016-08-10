@@ -26,7 +26,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	const host_separator  = ',';
 	const port_separator  = ':';
 	const donation_id_key = 'hosted_button_id=';
-	const global_config_var = '$wp_ffpc_config';
 	const key_flush = 'flushed';
 	const slug_flush = '&flushed=true';
 	const key_precache = 'precached';
@@ -220,29 +219,24 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		if ( ! WP_CACHE )
 			$this->errors['no_wp_cache'] = __("WP_CACHE is disabled. Without that, cache plugins, like this, will not work. Please add `define ( 'WP_CACHE', true );` to the beginning of wp-config.php.", 'wp-ffpc');
 
-		/* look for global settings array */
-		if ( ! $this->global_saved )
-			$this->errors['no_global_saved'] = sprintf( __('No WP-FFPC configuration settings are saved in the wordpress database for %s ( according to PHP HTTP_HOST ). Please configure and save the %s for this site!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link);
-
-		/* look for acache file */
-		if ( !array_key_exists('wp_ffpc_config', $GLOBALS) )
-			$this->errors['no_acache_saved'] = sprintf (__('Advanced cache file is yet to be generated, please save %s', 'wp-ffpc'), $settings_link );
+		/* look for global settings array and acache file*/
+		if ( ( !$this->global_saved ) || ( !array_key_exists('wp_ffpc_config', $GLOBALS) ) )
+			$this->errors['no_global_saved'] = sprintf( __('WP-FFPC configuration settings are not saved to the ' .
+				'<span' . (array_key_exists('wp_ffpc_config', $GLOBALS) ? ' style="text-decoration:line-through"' : '') . '>cache config file</span> or the ' .
+				'<span' . ($this->global_saved ? ' style="text-decoration:line-through"' : '') . '>Wordpress database</span> for %s (HTTP_HOST). Please configure and save the %s for this site!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link);
 
 		/* look for extensions that should be available */
-		foreach ( $this->valid_cache_type as $backend => $status ) {
-			if ( $this->options['cache_type'] == $backend && ! $status ) {
-				$this->errors['no_backend'] = sprintf ( __('%s cache backend activated but no PHP %s extension was found.<br />Please either use different backend or activate the module!', 'wp-ffpc'), $backend, $backend );
-			}
-		}
-
-		/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
-		if ( extension_loaded ( 'memcache' )  ) {
-			$memcache_settings = ini_get_all( 'memcache' );
-			if ( !empty ( $memcache_settings ) && $this->options['cache_type'] == 'memcache' && isset($memcache_settings['memcache.protocol']) )
-			{
-				$memcache_protocol = strtolower($memcache_settings['memcache.protocol']['local_value']);
-				if ( $memcache_protocol == 'binary' ) {
-					$this->errors['memcached_binary'] = __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc');
+		if ( isset($GLOBALS['wp_ffpc_config']) ) {
+			global $wp_ffpc_config;
+			if (false === $this->valid_cache_type[$wp_ffpc_config['cache_type']])
+				$this->errors['no_backend'] = sprintf ( __('%s cache backend selected but no PHP %s extension was found. Please activate the PHP %s extension or choose a different backend.', 'wp-ffpc'), $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'] );
+			else if ( 'memcache' === $wp_ffpc_config['cache_type'] ) {
+				/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
+				$memcache_settings = ini_get_all( 'memcache' );
+				if ( isset( $memcache_settings['memcache.protocol'] ) ) {
+					$memcache_protocol = strtolower($memcache_settings['memcache.protocol']['local_value']);
+					if ( $memcache_protocol == 'binary' )
+						$this->errors['memcached_binary'] = __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc');
 				}
 			}
 		}
@@ -295,13 +289,13 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		global $wp_filesystem;
 		if ( !is_object($wp_filesystem) ) {
-			static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
+			static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_ERR );
 			error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
 			return;
 		}
 		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
 			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_ERR );
 			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
 				'(' . $wp_filesystem->errors->get_error_code() . ')');
 			return;
@@ -472,28 +466,28 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		 * if options were saved, display saved message
 		 */
 		if ($this->status == 1) { ?>
-			<div class='updated settings-error'><p><strong><?php _e( 'Settings saved to database.' , 'wp-ffpc') ?></strong></p></div>
+			<div class='updated notice notice-success'><p><strong><?php _e( 'Settings saved to database.' , 'wp-ffpc') ?></strong></p></div>
 		<?php }
 
 		/**
 		 * if options were delete, display delete message
 		 */
 		if ($this->status == 2) { ?>
-			<div class='error'><p><strong><?php _e( 'Plugin options deleted from database.' , 'wp-ffpc') ?></strong></p></div>
+			<div class='updated notice notice-success'><p><strong><?php _e( 'Plugin options deleted from database.' , 'wp-ffpc') ?></strong></p></div>
 		<?php }
 
 		/**
 		 * if options were saved
 		 */
 		if (isset($_GET[ self::key_flush ]) && $_GET[ self::key_flush ]=='true' || $this->status == 3) { ?>
-			<div class='updated settings-error'><p><strong><?php _e( "Cache flushed." , 'wp-ffpc'); ?></strong></p></div>
+			<div class='updated notice notice-success'><p><strong><?php _e( "Cache flushed." , 'wp-ffpc'); ?></strong></p></div>
 		<?php }
 
 		/**
 		 * if options were saved, display saved message
 		 */
 		if ( ( isset($_GET[ self::key_precache ]) && $_GET[ self::key_precache ]=='true' ) || $this->status == 4) { ?>
-		<div class='updated settings-error'><p><strong><?php _e( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') ?></strong></p></div>
+		<div class='updated notice notice-success'><p><strong><?php _e( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') ?></strong></p></div>
 		<?php }
 
 		/**
@@ -503,13 +497,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		<h2><?php echo $this->plugin_name ; _e( ' settings', 'wp-ffpc') ; ?></h2>
 
-		<div class="updated">
-			<p><strong><?php _e ( 'Driver: ' , 'wp-ffpc'); echo $this->options['cache_type']; ?></strong></p>
+		<div class="notice notice-info">
+			<p><strong><?php _e ( 'Driver: ' , 'wp-ffpc'); echo $this->options['cache_type']; ?></strong>
 			<?php
 			/* only display backend status if memcache-like extension is running */
 			if ( strstr ( $this->options['cache_type'], 'memcache') ) {
-				?><p><?php
-				_e( '<strong>Backend status:</strong><br />', 'wp-ffpc');
+				_e( '<br /><strong>Backend status:</strong><br />', 'wp-ffpc');
 
 				/* we need to go through all servers */
 				$servers = $this->backend->status();
@@ -526,9 +519,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 							_e ( '<span class="error-msg">unknown, please try re-saving settings!</span><br />', 'wp-ffpc');
 					}
 				}
-
-				?></p><?php
-			} ?>
+			} ?></p>
 		</div>
 		<form autocomplete="off" method="post" action="#" id="<?php echo $this->plugin_constant ?>-settings" class="plugin-admin">
 
@@ -1090,7 +1081,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		}
 		else {
 			$string[] = "<?php";
-			$string[] = self::global_config_var . ' = ' . var_export ( $this->global_config, true ) . ';' ;
+			$string[] = '$wp_ffpc_config = ' . var_export ( $this->global_config, true ) . ';' ;
 			//$string[] = "include_once ('" . $this->acache_backend . "');";
 			$string[] = "include_once ('" . $this->acache_worker . "');";
 		}

@@ -192,7 +192,7 @@ abstract class WP_FFPC_ABSTRACT {
 		}
 
 		// we have some credentials, check nonce if we previously produced a credential form and received a post
-		// BUGBUG maybe exit this w/ false if we don't get a hostname
+		// BUGBUG maybe exit this w/ false if we don't get a hostname to strengthen the nonce
 		if ( isset( $_POST[ 'hostname' ] ) && !check_admin_referer( 'wp-ffpc-fileapi', '_wpnonce-f' ) ) {
 			ob_end_flush();
 			return false;
@@ -201,7 +201,6 @@ abstract class WP_FFPC_ABSTRACT {
 		// try to get the wp_filesystem running
 		if ( ! WP_Filesystem($creds) ) {
 			// credentials were not good; ask the user for them again
-			// BUGBUG may need to create new var holding the $_POST - old credential keys //  array_keys($_POST)
 			request_filesystem_credentials($credurl, '', true, WP_CONTENT_DIR, array_keys($_POST));
 			$this->fileapiform = ob_get_clean();
 			return false; // stop the normal page from displaying
@@ -211,16 +210,16 @@ abstract class WP_FFPC_ABSTRACT {
 		ob_end_flush();
 		global $wp_filesystem;
 		if ( !is_object($wp_filesystem) ) {
-			//static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
-			error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
-			return;
+			static::alert( 'Could not access the filesystem to configure WP-FFPC plugin', LOG_ERR );
+			error_log('Could not access the filesystem to configure WP-FFPC plugin');
+			return false;
 		}
 		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
-			//static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-			//	'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_ERR );
 			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
 				'(' . $wp_filesystem->errors->get_error_code() . ')');
-			return;
+			return false;
 		}
 		return true;
 	}
@@ -644,12 +643,18 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( empty($msg)) return false;
 
 		switch ($level) {
-			case LOG_ERR:
 			case LOG_WARNING:
-				$css = "error";
+				//$css = "notice notice-warning";
+				//break;
+			case LOG_ERR:
+				$css = "error notice notice-error";
 				break;
+			case LOG_INFO:
+				$css = "notice notice-info";
+				break;
+			case LOG_NOTICE:
 			default:
-				$css = "updated";
+				$css = "updated notice notice-success";
 				break;
 		}
 

@@ -11,6 +11,17 @@ if ( !function_exists ('__debug__') ) {
 	}
 }
 
+/* check if config is network active: use network config */
+if (!empty ( $wp_ffpc_config['network'] ) )
+	$wp_ffpc_config = $wp_ffpc_config['network'];
+/* check if config is active for site : use site config */
+elseif ( !empty ( $wp_ffpc_config[ $_SERVER['HTTP_HOST'] ] ) )
+	$wp_ffpc_config = $wp_ffpc_config[ $_SERVER['HTTP_HOST'] ];
+/* plugin config not found :( */
+else {
+	unset($GLOBALS['wp_ffpc_config']);
+	return false;
+}
 
 /* check for WP cache enabled*/
 if ( !WP_CACHE )
@@ -45,16 +56,6 @@ if ( function_exists('is_multisite') && stripos($wp_ffpc_uri, '/files/') && is_m
 	__debug__ ( 'Skippings multisite /files/ hit');
 	return false;
 }
-
-/* check if config is network active: use network config */
-if (!empty ( $wp_ffpc_config['network'] ) )
-	$wp_ffpc_config = $wp_ffpc_config['network'];
-/* check if config is active for site : use site config */
-elseif ( !empty ( $wp_ffpc_config[ $_SERVER['HTTP_HOST'] ] ) )
-	$wp_ffpc_config = $wp_ffpc_config[ $_SERVER['HTTP_HOST'] ];
-/* plugin config not found :( */
-else
-	return false;
 
 /* no cache for uri with query strings, things usually go bad that way */
 if ( isset($wp_ffpc_config['nocache_dyn']) && !empty($wp_ffpc_config['nocache_dyn']) && stripos($wp_ffpc_uri, '?') !== false ) {
