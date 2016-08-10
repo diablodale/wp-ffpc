@@ -11,6 +11,10 @@ if ( !function_exists ('__debug__') ) {
 	}
 }
 
+/* check for config */
+if (!isset($wp_ffpc_config))
+	return false;
+
 /* check if config is network active: use network config */
 if (!empty ( $wp_ffpc_config['network'] ) )
 	$wp_ffpc_config = $wp_ffpc_config['network'];
@@ -23,10 +27,6 @@ else {
 	return false;
 }
 
-/* check for WP cache enabled*/
-if ( !WP_CACHE )
-	return false;
-
 /* no cache for post request (comments, plugins and so on) */
 if ($_SERVER["REQUEST_METHOD"] == 'POST')
 	return false;
@@ -36,10 +36,6 @@ if ($_SERVER["REQUEST_METHOD"] == 'POST')
  * with request parameters and a session is active
  */
 if (defined('SID') && SID != '')
-	return false;
-
-/* check for config */
-if (!isset($wp_ffpc_config))
 	return false;
 
 /* request uri */

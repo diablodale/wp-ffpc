@@ -1025,7 +1025,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * options delete hook; needs to be implemented
 	 */
 	public function plugin_extend_options_delete(  ) {
-		delete_site_option ( $this->global_option );
+		/* remove from options in memory */
+		unset ( $this->global_config[ $this->global_config_key ] );
+
+		/* deploy advanced-cache.php */
+		$this->deploy_advanced_cache ();
+
+		/* save options to database */
+		update_site_option( $this->global_option , $this->global_config );
 	}
 
 	/**

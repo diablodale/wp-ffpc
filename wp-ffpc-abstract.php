@@ -250,7 +250,6 @@ abstract class WP_FFPC_ABSTRACT {
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
 			// BUGBUG same warning display problems as above
-			// BUGBUG need to update config here so the advanced-cache.php file is in sync with the db; e.g. $this->update_global_config( true );
 			$this->status = 2;
 		}
 
