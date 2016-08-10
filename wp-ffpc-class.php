@@ -263,42 +263,48 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * deactivation hook function, to be extended
 	 */
+	// BUGBUG this and many other parts of this plugin's code do not appear to handle multisite well; e.g., there is no code which
+	// on deactivate or uninstall loops through the sites in the multisite and deletes the site-specific (not network activated)
+	// plugin options in all of them. See http://stackoverflow.com/questions/13960514/how-to-adapt-my-plugin-to-multisite/
 	public function plugin_deactivate () {
-		// setup WP filesystem API to be later used in deploy_advanced_cache()
-		// code leveraged from Wordpress core
-		$url = esc_url_raw(remove_query_arg( '_wpnonce' )) . '&_wpnonce='. wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file );
-		ob_start();
-		if ( false === ($credentials = request_filesystem_credentials($url)) ) {
-			$data = ob_get_clean();
-			if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
-			include_once( ABSPATH . 'wp-admin/admin-header.php');
-			echo $data;
-			include( ABSPATH . 'wp-admin/admin-footer.php');
-			exit;
-		}
+		// is there a saved config? if true, we need the filesystem api to remove it
+		if ( array_key_exists('wp_ffpc_config', $GLOBALS) ) {
+			// setup WP filesystem API to be later used in deploy_advanced_cache()
+			// code leveraged from Wordpress core
+			$url = esc_url_raw(remove_query_arg( '_wpnonce' )) . '&_wpnonce='. wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file );
+			ob_start();
+			if ( false === ($credentials = request_filesystem_credentials($url)) ) {
+				$data = ob_get_clean();
+				if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
+				include_once( ABSPATH . 'wp-admin/admin-header.php');
+				echo $data;
+				include( ABSPATH . 'wp-admin/admin-footer.php');
+				exit;
+			}
 
-		if ( !WP_Filesystem($credentials) ) {
-			request_filesystem_credentials($url, '', true); //Failed to connect, Error and request again
-			$data = ob_get_clean();
-			if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
-			include_once( ABSPATH . 'wp-admin/admin-header.php');
-			echo $data;
-			include( ABSPATH . 'wp-admin/admin-footer.php');
-			exit;
-		}
+			if ( !WP_Filesystem($credentials) ) {
+				request_filesystem_credentials($url, '', true); //Failed to connect, Error and request again
+				$data = ob_get_clean();
+				if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
+				include_once( ABSPATH . 'wp-admin/admin-header.php');
+				echo $data;
+				include( ABSPATH . 'wp-admin/admin-footer.php');
+				exit;
+			}
 
-		global $wp_filesystem;
-		if ( !is_object($wp_filesystem) ) {
-			static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_ERR );
-			error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
-			return;
-		}
-		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
-			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_ERR );
-			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')');
-			return;
+			global $wp_filesystem;
+			if ( !is_object($wp_filesystem) ) {
+				static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
+				error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
+				return;
+			}
+			if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
+				static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+					'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+				error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+					'(' . $wp_filesystem->errors->get_error_code() . ')');
+				return;
+			}
 		}
 
 		/* remove current site config from global config */
@@ -309,22 +315,37 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * uninstall hook function, to be extended
 	 */
 	public function plugin_uninstall( $delete_options = true ) {
+		/* delete site settings */
+		// BUGBUG this does a deploy of advanced-cache.php in nested function calls; code should be refactors to prevent this
+		// a workaround is to delete advanced-cache.php file after as the code does below
+		// BUGBUG this and many other parts of this plugin's code do not appear to handle multisite well; e.g., there is no code which
+		// on deactivate or uninstall loops through the sites in the multisite and deletes the site-specific (not network activated)
+		// plugin options in all of them. See http://stackoverflow.com/questions/13960514/how-to-adapt-my-plugin-to-multisite/
+		if ( $delete_options )
+			$this->plugin_options_delete ();
+
 		// Wordpress has already setup a working filesystem object earlier in the core codepath
 		// before this function is called; therefore only the most basic error handling is used here
 		global $wp_filesystem;
 		if ( is_object($wp_filesystem) ) {
 			// delete advanced-cache.php file
-			$delete_result = $wp_filesystem->delete( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php' );
-			if (false === $delete_result)
+			$delete_result = $wp_filesystem->delete( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php', false, 'f' );
+			if (true === $delete_result)
+				@opcache_invalidate( trailingslashit(WP_CONTENT_DIR) . 'advanced-cache.php' );
+			else {
+				if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
+					static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+						'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+					error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+						'(' . $wp_filesystem->errors->get_error_code() . ')');
+					return false;
+				}
 				static::alert( sprintf(__('Advanced cache file (%s) could not be deleted.<br />Please manually delete this file', 'wp-ffpc'), $this->acache), LOG_WARNING );
+			}
 		}
 		else {
-			static::alert( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache), LOG_WARNING );			
-		}
-
-		/* delete site settings */
-		if ( $delete_options ) {
-			$this->plugin_options_delete ();
+			static::alert( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache), LOG_WARNING );
+			error_log( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache));
 		}
 	}
 
@@ -506,8 +527,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 				/* we need to go through all servers */
 				$servers = $this->backend->status();
-				error_log(__CLASS__ . ':' .json_encode($servers));
 				if ( is_array( $servers ) && !empty ( $servers ) ) {
+					error_log(__CLASS__ . ': ' .json_encode($servers));
 					foreach ( $servers as $server_string => $status ) {
 						echo $server_string ." => ";
 
@@ -1080,6 +1101,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	private function deploy_advanced_cache( ) {
 		global $wp_filesystem;
+		if ( !is_object($wp_filesystem) ) return false;
 		
 		/* add the required includes and generate the needed code */
 		/* if no active site left no need for advanced cache :( */
@@ -1102,6 +1124,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			error_log('Generating advanced-cache.php failed: '.$this->acache.' is not writable');
 			return false;
 		}
+		
+		// invalidate the opcache on the file immediately rather than waiting for opcache timed checking
+		@opcache_invalidate( trailingslashit(WP_CONTENT_DIR) . 'advanced-cache.php' );
 
 		/* cleanup possible leftover files from previous plugin versions */
 		$remote_dir = $wp_filesystem->find_folder($this->plugin_dir);

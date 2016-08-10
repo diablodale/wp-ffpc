@@ -210,13 +210,13 @@ abstract class WP_FFPC_ABSTRACT {
 		ob_end_flush();
 		global $wp_filesystem;
 		if ( !is_object($wp_filesystem) ) {
-			static::alert( 'Could not access the filesystem to configure WP-FFPC plugin', LOG_ERR );
+			static::alert( 'Could not access the filesystem to configure WP-FFPC plugin', LOG_WARNING );
 			error_log('Could not access the filesystem to configure WP-FFPC plugin');
 			return false;
 		}
 		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
 			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_ERR );
+				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
 			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
 				'(' . $wp_filesystem->errors->get_error_code() . ')');
 			return false;
