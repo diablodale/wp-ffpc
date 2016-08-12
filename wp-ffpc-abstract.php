@@ -108,7 +108,12 @@ abstract class WP_FFPC_ABSTRACT {
 		/* initialize plugin, plugin specific init functions */
 		$this->plugin_post_construct();
 
+		// TODO The code should be split between code to run on every page (e.g. cache invalidation hooks) and
+		// admin page code (e.g. saving settings). This division will then be hooked into init or admin_init
+		// Some of the code, like the above forced load of wp-admin/includes/plugin.php (which
+		// is loaded by the time admin_init occurs) can be altered. No need to run admin page code on non-admin pages.
 		add_action( 'init', array(&$this,'plugin_init'));
+		add_action( 'admin_init', array(&$this,'plugin_admin_init'));
 		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
 
 	}
@@ -157,9 +162,9 @@ abstract class WP_FFPC_ABSTRACT {
 
 		/* register admin init, catches $_POST and adds submenu to admin menu */
 		if ( $this->network )
-			add_action('network_admin_menu', array( &$this , 'plugin_admin_init') );
+			add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
 		else
-			add_action('admin_menu', array( &$this , 'plugin_admin_init') );
+			add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
 
 		add_filter('contextual_help', array( &$this, 'plugin_admin_help' ), 10, 2);
 
@@ -228,9 +233,6 @@ abstract class WP_FFPC_ABSTRACT {
 	 * admin init called by WordPress add_action, needs to be public
 	 */
 	public function plugin_admin_init() {
-		/* add submenu to settings pages */
-		add_submenu_page( $this->settings_slug, $this->plugin_name . __translate__( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
-	
 		/* save parameter updates, if there are any */
 		if ( isset( $_POST[ $this->button_save ] ) ) {
 			if ( !$this->plugin_setup_fileapi() ) return;
@@ -241,7 +243,7 @@ abstract class WP_FFPC_ABSTRACT {
 			// Often on the immediate page after the change. I believe this is
 			// due to the warning tests being evaluated before the changes to the db.
 			// This logic flow error was being masked by the Header(location) hack I previously removed
-			$this->status = 1;
+			static::alert( __( 'Settings saved to database.' , 'wp-ffpc') , LOG_NOTICE );
 		}
 
 		/* delete parameters if requested */
@@ -250,11 +252,19 @@ abstract class WP_FFPC_ABSTRACT {
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
 			// BUGBUG same warning display problems as above
-			$this->status = 2;
+			static::alert( __( 'Plugin options deleted from database.' , 'wp-ffpc') , LOG_NOTICE );
 		}
 
 		/* load additional moves */
-		$this->plugin_extend_admin_init();
+		$this->plugin_extend_admin_init();		
+	}
+
+	/**
+	 * admin menu called by WordPress add_action, needs to be public
+	 */
+	public function plugin_admin_menu() {
+		/* add submenu to settings pages */
+		add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
 	}
 
 	/**
@@ -632,14 +642,15 @@ abstract class WP_FFPC_ABSTRACT {
 
 	/**
 	 * display formatted alert message
-	 *
+	 * 
 	 * @param string $msg Error message
 	 * @param string $error "level" of error
 	 * @param boolean $network WordPress network or not, DEPRECATED
-	 *
+	 * 
 	 */
 	static public function alert ( $msg, $level=LOG_WARNING, $network=false ) {
 		if ( empty($msg)) return false;
+		//if ( php_sapi_name() === "cli" ) return false;
 
 		switch ($level) {
 			case LOG_WARNING:
