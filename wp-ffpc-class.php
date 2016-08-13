@@ -226,44 +226,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	// on deactivate or uninstall loops through the sites in the multisite and deletes the site-specific (not network activated)
 	// plugin options in all of them. See http://stackoverflow.com/questions/13960514/how-to-adapt-my-plugin-to-multisite/
 	public function plugin_deactivate () {
-		// is there a saved config? if true, we need the filesystem api to remove it
+		// if there is a saved config, we need the filesystem api to remove it later in deploy_advanced_cache()
 		if ( array_key_exists('wp_ffpc_config', $GLOBALS) ) {
-			// setup WP filesystem API to be later used in deploy_advanced_cache()
-			// code leveraged from Wordpress core
-			$url = esc_url_raw(remove_query_arg( '_wpnonce' )) . '&_wpnonce='. wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file );
-			ob_start();
-			if ( false === ($credentials = request_filesystem_credentials($url)) ) {
-				$data = ob_get_clean();
-				if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
-				include_once( ABSPATH . 'wp-admin/admin-header.php');
-				echo $data;
-				include( ABSPATH . 'wp-admin/admin-footer.php');
-				exit;
-			}
-
-			if ( !WP_Filesystem($credentials) ) {
-				request_filesystem_credentials($url, '', true); //Failed to connect, Error and request again
-				$data = ob_get_clean();
-				if ( empty($data) ) return;	// an unexpected situation occurred, we should have buffered a credential form
-				include_once( ABSPATH . 'wp-admin/admin-header.php');
-				echo $data;
-				include( ABSPATH . 'wp-admin/admin-footer.php');
-				exit;
-			}
-
-			global $wp_filesystem;
-			if ( !is_object($wp_filesystem) ) {
-				static::alert( 'Could not access the filesystem to deactivate WP-FFPC plugin', LOG_WARNING );
-				error_log('Could not access the filesystem to deactivate WP-FFPC plugin');
-				return;
-			}
-			if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
-				static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-					'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
-				error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-					'(' . $wp_filesystem->errors->get_error_code() . ')');
-				return;
-			}
+			// make a new nonce because the current nonce was consumed earlier in the WP core code for deactivate
+			$url = add_query_arg( '_wpnonce', wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file ), remove_query_arg( '_wpnonce' ));
+			if ( !static::plugin_setup_fileapi( $url ) ) return;
 		}
 
 		/* remove current site config from global config */
@@ -487,12 +454,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		</script>
 
 		<?php
-
-		/* display any needed fileapi credential form */
-		if ( !is_null($this->fileapiform) ) {
-			echo $this->fileapiform;
-			return;
-		}
 
 		/* display donation form */
 		$this->plugin_donation_form();
@@ -1217,7 +1178,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * generate cache entry for every available permalink, might be very-very slow,
 	 * therefore it starts a background process
-	 *
+	 * BUGBUG this does not support multisite where it is NOT network activated. One problem
+	 * is that multiple subsite admins could run precache operations at the same/overlapping times
+	 * yet the precache php file has the same name or everyone. This will be unpredictible the problems
+	 * that will occur.
 	 */
 	private function precache ( &$links ) {
 

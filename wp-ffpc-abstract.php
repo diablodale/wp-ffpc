@@ -49,7 +49,6 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $admin_css_handle;
 	protected $admin_css_url;
 	protected $utils = null;
-	protected $fileapiform = null;
 	
 	protected $donation_business_name;
 	protected $donation_item_name;
@@ -185,45 +184,55 @@ abstract class WP_FFPC_ABSTRACT {
 
 	/**
 	 * initial setup of WP Filesystem API to get credentials
+	 * @param string $posturl raw unescaped url representing the destination after credential check
+	 * @param string $testdir directory path to test for filesystem access
 	 */
-	protected function plugin_setup_fileapi() {
-		$credurl = wp_nonce_url($this->settings_link, 'wp-ffpc-fileapi', '_wpnonce-f');		
+	static protected function plugin_setup_fileapi( $posturl, $testdir = false) {
+		if ( !$testdir ) $testdir = WP_CONTENT_DIR;
+		// if an http post, gather previously posted fields and remove any old credential form fields
+		$fwd_post = $_POST;
+		unset( $fwd_post['hostname'], $fwd_post['username'], $fwd_post['password'], $fwd_post['public_key'],
+			$fwd_post['private_key'], $fwd_post['connection_type'], $fwd_post['upgrade'] );
+		$posturl = esc_url_raw( add_query_arg( '_wpnonce-f', wp_create_nonce( 'wp-ffpc-fileapi' ), $posturl) );
 		ob_start();
-		if (false === ($creds = request_filesystem_credentials($credurl, '', false, WP_CONTENT_DIR, array_keys($_POST)) ) ) {
-			// if we get here, then we don't have credentials yet,
-			// request_filesystem_credentials() produced a form for the user to fill in
-			$this->fileapiform = ob_get_clean();
-			return false; // stop the normal page from from displaying
+		if (false === ($credentials = request_filesystem_credentials($posturl, '', false, $testdir, array_keys($fwd_post)) ) ) {
+			// we don't have credentials yet and request_filesystem_credentials() produced a form for the user to complete
+			$data = ob_get_clean();
+			if ( empty($data) ) wp_die(__('<h1>Error</h1><p>request_filesystem_credentials() failed. Can not proceed with this action.</p>')); // an unexpected situation occurred, we should have buffered a credential form
+			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			echo $data;
+			include( ABSPATH . 'wp-admin/admin-footer.php');
+			exit;
 		}
 
 		// we have some credentials, check nonce if we previously produced a credential form and received a post
-		// BUGBUG maybe exit this w/ false if we don't get a hostname to strengthen the nonce
-		if ( isset( $_POST[ 'hostname' ] ) && !check_admin_referer( 'wp-ffpc-fileapi', '_wpnonce-f' ) ) {
-			ob_end_flush();
-			return false;
-		}
+		if ( isset( $_POST['hostname'] ) ) check_admin_referer( 'wp-ffpc-fileapi', '_wpnonce-f' );
 
 		// try to get the wp_filesystem running
-		if ( ! WP_Filesystem($creds) ) {
+		if ( ! WP_Filesystem($credentials) ) {
 			// credentials were not good; ask the user for them again
-			request_filesystem_credentials($credurl, '', true, WP_CONTENT_DIR, array_keys($_POST));
-			$this->fileapiform = ob_get_clean();
-			return false; // stop the normal page from displaying
+			request_filesystem_credentials($posturl, '', true, $testdir, array_keys($fwd_post));
+			$data = ob_get_clean();
+			if ( empty($data) ) wp_die(__('<h1>Error</h1><p>request_filesystem_credentials() failed. Can not proceed with this action.</p>')); // an unexpected situation occurred, we should have buffered a credential form
+			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			echo $data;
+			include( ABSPATH . 'wp-admin/admin-footer.php');
+			exit;
 		}
 
 		// we have good credentials and the filesystem should be ready on global $wp_filesystem
 		ob_end_flush();
 		global $wp_filesystem;
 		if ( !is_object($wp_filesystem) ) {
-			static::alert( 'Could not access the filesystem to configure WP-FFPC plugin', LOG_WARNING );
-			error_log('Could not access the filesystem to configure WP-FFPC plugin');
+			static::alert( __('Could not access the Wordpress Filesystem to configure WP-FFPC plugin'), LOG_WARNING );
+			error_log( __('Could not access the Wordpress Filesystem to configure WP-FFPC plugin'));
 			return false;
 		}
 		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
-			static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
-			error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
-				'(' . $wp_filesystem->errors->get_error_code() . ')');
+			static::alert( __('Wordpress Filesystem error: ') . $wp_filesystem->errors->get_error_message() .
+				' (' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+			error_log( __('Wordpress Filesystem error: ') . $wp_filesystem->errors->get_error_message() .
+				' (' . $wp_filesystem->errors->get_error_code() . ')');
 			return false;
 		}
 		return true;
@@ -235,7 +244,7 @@ abstract class WP_FFPC_ABSTRACT {
 	public function plugin_admin_init() {
 		/* save parameter updates, if there are any */
 		if ( isset( $_POST[ $this->button_save ] ) ) {
-			if ( !$this->plugin_setup_fileapi() ) return;
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
 			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
 			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
 			// BUGBUG warnings like "No WP-FFPC configuration settings are saved..." are
@@ -248,7 +257,7 @@ abstract class WP_FFPC_ABSTRACT {
 
 		/* delete parameters if requested */
 		if ( isset( $_POST[ $this->button_delete ] ) ) {
-			if ( !$this->plugin_setup_fileapi() ) return;
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
 			// BUGBUG same warning display problems as above
@@ -264,6 +273,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_menu() {
 		/* add submenu to settings pages */
+		// TODO consider switching to use add_options_page()
 		add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
 	}
 
@@ -670,6 +680,8 @@ abstract class WP_FFPC_ABSTRACT {
 
 		$r = '<div class="'. $css .'"><p>'. sprintf ( __('%s', 'PluginUtils' ),  $msg ) .'</p></div>';
 		if ( version_compare(phpversion(), '5.3.0', '>=')) {
+			// BUGBUG notices here and below will not appear in multisite network admin or multisite user admin pages
+			// see do_action's in wordpress\wp-admin\admin-header.php
 			add_action('admin_notices', function() use ($r) { echo $r; }, 10 );
 		}
 		else {
