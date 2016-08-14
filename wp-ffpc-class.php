@@ -1174,12 +1174,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					$starttime = explode ( " ", microtime() );
 					$starttime = $starttime[1] + $starttime[0];
 
-						$page = file_get_contents( $permalink );
+					$page = @file_get_contents( $permalink );
+					if (false === $page) {
+						$size = 0;
+						$endtime = 0;
+						//$permalink = $http_response_header[0] . \' \' . $permalink;
+					}
+					else {
 						$size = round ( ( strlen ( $page ) / 1024 ), 2 );
-
-					$endtime = explode ( " ", microtime() );
-					$endtime = round( ( $endtime[1] + $endtime[0] ) - $starttime, 2 );
-
+						$endtime = explode ( " ", microtime() );
+						$endtime = round( ( $endtime[1] + $endtime[0] ) - $starttime, 2 );
+					}
 					echo $permalink . "\t" .  $endtime . "\t" . $size . "\n";
 					unset ( $page, $size, $starttime, $endtime );
 					sleep( 1 );
