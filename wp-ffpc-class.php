@@ -14,8 +14,6 @@ include_once ( dirname(__FILE__) .'/wp-ffpc-backend.php' );
  * @var string $acache	WordPress advanced-cache.php file location
  * @var string $nginx_sample	nginx sample config file, bundled with the plugin
  * @var string $acache_backend	backend driver file, bundled with the plugin
- * @var string $button_flush	flush button identifier
- * @var string $button_precache	precache button identifier
  * @var string $global_option	global options identifier
  * @var string $precache_logfile	Precache log file location
  * @var string $precache_phpfile	Precache PHP worker location
@@ -26,17 +24,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	const host_separator  = ',';
 	const port_separator  = ':';
 	const donation_id_key = 'hosted_button_id=';
-	const key_flush = 'flushed';
-	const slug_flush = '&flushed=true';
-	const key_precache = 'precached';
-	const slug_precache = '&precached=true';
-	const key_precache_disabled = 'precache_disabled';
-	const slug_precache_disabled = '&precache_disabled=true';
-	const precache_log = 'wp-ffpc-precache-log';
-	const precache_timestamp = 'wp-ffpc-precache-timestamp';
-	const precache_php = 'wp-ffpc-precache.php';
+	const precache_log_option = 'wp-ffpc-precache-log';
+	const precache_timestamp_option = 'wp-ffpc-precache-timestamp';
+	const precache_files_prefix = 'wp-ffpc-precache-';
 	const precache_id = 'wp-ffpc-precache-task';
-	private $precache_message = '';
 	private $precache_logfile = '';
 	private $precache_phpfile = '';
 	private $global_option = '';
@@ -47,8 +38,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	private $acache = '';
 	private $nginx_sample = '';
 	private $acache_backend = '';
-	private $button_flush;
-	private $button_precache;
 	private $select_cache_type = array ();
 	private $select_invalidation_method = array ();
 	private $select_schedules = array();
@@ -84,16 +73,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		$this->nginx_sample = $this->plugin_dir . $this->plugin_constant . '-nginx-sample.conf';
 		/* backend driver file */
 		$this->acache_backend = $this->plugin_dir . $this->plugin_constant . '-engine.php';
-		/* flush button identifier */
-		$this->button_flush = $this->plugin_constant . '-flush';
-		/* precache button identifier */
-		$this->button_precache = $this->plugin_constant . '-precache';
 		/* global options identifier */
 		$this->global_option = $this->plugin_constant . '-global';
 		/* precache log */
-		$this->precache_logfile = sys_get_temp_dir() . '/' . self::precache_log;
+		$this->precache_logfile = trailingslashit(sys_get_temp_dir()) . self::precache_files_prefix . get_current_blog_id() . '.log';
 		/* this is the precacher php worker file */
-		$this->precache_phpfile = sys_get_temp_dir() . '/' . self::precache_php;
+		$this->precache_phpfile = trailingslashit(sys_get_temp_dir()) . self::precache_files_prefix . get_current_blog_id() . '.php';
 		/* search for a system function */
 		$this->shell_possibilities = array ( 'shell_exec', 'exec', 'system', 'passthru' );
 		/* get disabled functions list */
@@ -206,7 +191,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		if ( WP_CACHE )
 			add_filter('redirect_canonical', 'wp_ffpc_redirect_callback', 10, 2);
 
-		/* add precache coldrun action */
+		/* add precache coldrun action for scheduled runs */
+		// TODO test this method of passing a reference to $this. Seems it would lock this
+		// instantiation into memory or cause a later object-not-found error when a
+		// scheduled run occurs. The precache operations would be better to be static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
 
 		add_filter('contextual_help', array( &$this, 'plugin_admin_nginx_help' ), 10, 2);
@@ -289,50 +277,49 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 	/**
 	 * extending admin init
-	 * TODO remove the location redirects and align the precache notices method to be like settings save/delete
 	 */
 	public function plugin_extend_admin_init () {
-		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_flush ] ) && check_admin_referer ( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
+		/* handle cache flush or precache requests */
+		if ( isset( $_POST[$this->button_flush] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
 			/* remove precache log entry */
-			static::_delete_option( self::precache_log  );
+			static::_delete_option( self::precache_log_option );
 			/* remove precache timestamp entry */
-			static::_delete_option( self::precache_timestamp );
+			static::_delete_option( self::precache_timestamp_option );
 
-			/* remove precache logfile */
-			if ( @file_exists ( $this->precache_logfile ) ) {
+			/* remove precache logfile and PHP worker */
+			if ( @file_exists( $this->precache_logfile ) )
 				unlink ( $this->precache_logfile );
-			}
-
-			/* remove precache PHP worker */
-			if ( @file_exists ( $this->precache_phpfile ) ) {
+			if ( @file_exists( $this->precache_phpfile ) )
 				unlink ( $this->precache_phpfile );
-			}
 
 			/* flush backend */
+			// BUGBUG dangerous in multisite; the code allows subsite admins to clear entire cache systems
+			// which affects other subsites and applications. When multisite, code needs to isolate any cache
+			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
+			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
 			$this->backend->clear( false, true );
-			$this->status = 3;
-			header( "Location: ". $this->settings_link . self::slug_flush );
+			static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
+		}
+		else if ( isset( $_POST[$this->button_precache] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
+			/* if available shell function then start precache */
+			if ( false === $this->shell_function )
+				__( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');				
+			else {		
+				$precache_result = $this->precache_coldrun();
+				if ( true === $precache_result)
+					static::alert( __( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') , LOG_NOTICE );
+				else if ( false === $precache_result)
+					static::alert( __( 'Precache process failed to start for an unexpected reason' , 'wp-ffpc') , LOG_WARNING );
+				else
+					static::alert( $precache_result, LOG_WARNING );
+			}
 		}
 
-		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_precache ] ) && check_admin_referer ( 'wp-ffpc-admin', '_wpnonce-a' ) ) {
-			/* is no shell function is possible, fail */
-			if ( $this->shell_function == false ) {
-				$this->status = 5;
-				header( "Location: ". $this->settings_link . self::slug_precache_disabled );
-			}
-			/* otherwise start full precache */
-			else {
-				$this->precache_message = $this->precache_coldrun();
-				$this->status = 4;
-				header( "Location: ". $this->settings_link . self::slug_precache );
-			}
-		}
-
-		/* check & collect errors */
+		/* validation and checks */
 		if ( !WP_CACHE )
-			static::alert( __("WP_CACHE is disabled. Without that, cache plugins, like this, will not work. Please add `define ( 'WP_CACHE', true );` to the beginning of wp-config.php.", 'wp-ffpc'), LOG_WARNING);
+			static::alert( __('WP_CACHE is disabled therefore cache plugins will not work. Please add <code>define(\'WP_CACHE\', true);</code> to the beginning of wp-config.php.', 'wp-ffpc'), LOG_WARNING);
 
 		/* look for global settings array and acache file*/
 		// BUGBUG lack of error handling/returns in saving code can make $this->global_saved errant
@@ -368,11 +355,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				$servers = $this->backend->status();
 				if ( is_array( $servers ) && !empty ( $servers ) ) {
 					error_log(__CLASS__ . ': ' .json_encode($servers));
-					foreach ( $servers as $server_string => $status ) {
+					foreach ( $servers as $server_string => $server_status ) {
 						$notice .= $server_string . " => ";
-						if ( $status == 0 )
+						if ( $server_status == 0 )
 							$notice .= __( '<span class="error-msg">down</span><br />', 'wp-ffpc');
-						elseif ( ( $this->options['cache_type'] == 'memcache' && $status > 0 )  || $status == 1 )
+						elseif ( ( $this->options['cache_type'] == 'memcache' && $server_status > 0 )  || $server_status == 1 )
 							$notice .= __( '<span class="ok-msg">up & running</span><br />', 'wp-ffpc');
 						else
 							$notice .= __( '<span class="error-msg">unknown, please try re-saving settings!</span><br />', 'wp-ffpc');
@@ -457,20 +444,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		/* display donation form */
 		$this->plugin_donation_form();
-
-		/**
-		 * if options were saved
-		 */
-		if (isset($_GET[ self::key_flush ]) && $_GET[ self::key_flush ]=='true' || $this->status == 3) { ?>
-			<div class='updated notice notice-success'><p><strong><?php _e( "Cache flushed." , 'wp-ffpc'); ?></strong></p></div>
-		<?php }
-
-		/**
-		 * if options were saved, display saved message
-		 */
-		if ( ( isset($_GET[ self::key_precache ]) && $_GET[ self::key_precache ]=='true' ) || $this->status == 4) { ?>
-		<div class='updated notice notice-success'><p><strong><?php _e( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') ?></strong></p></div>
-		<?php }
 
 		/**
 		 * the admin panel itself
@@ -815,8 +788,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 				<?php
 
-				$gentime = static::_get_option( self::precache_timestamp, $this->network );
-				$log = static::_get_option( self::precache_log, $this->network );
+				$gentime = static::_get_option( self::precache_timestamp_option, $this->network );
+				$log = static::_get_option( self::precache_log_option, $this->network );
 
 				if ( @file_exists ( $this->precache_logfile ) ) {
 					$logtime = filemtime ( $this->precache_logfile );
@@ -824,8 +797,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					/* update precache log in DB if needed */
 					if ( $logtime > $gentime ) {
 						$log = file ( $this->precache_logfile );
-						static::_update_option( self::precache_log , $log, $this->network );
-						static::_update_option( self::precache_timestamp , $logtime, $this->network );
+						static::_update_option( self::precache_log_option, $log, $this->network );
+						static::_update_option( self::precache_timestamp_option, $logtime, $this->network );
 					}
 
 				}
@@ -877,8 +850,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<?php if ( ( isset( $_GET[ self::key_precache_disabled ] ) && $_GET[ self::key_precache_disabled ] =='true' ) || $this->status == 5 || $this->shell_function == false ) { ?>
-						<strong><?php _e( "Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it's done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you whish to use precaching: " , 'wp-ffpc') ?><?php echo join( ',' , $this->shell_possibilities ); ?></strong>
+					<?php if ( $this->shell_function == false ) { ?>
+						<strong><?php
+							_e( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');
+							echo join( ',' , $this->shell_possibilities ); ?></strong>
 					<?php }
 					else { ?>
 						<input class="button-secondary" type="submit" name="<?php echo $this->button_precache ?>" id="<?php echo $this->button_precache ?>" value="<?php _e('Pre-cache', 'wp-ffpc') ?>" />
@@ -1180,14 +1155,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * therefore it starts a background process
 	 * BUGBUG this does not support multisite where it is NOT network activated. One problem
 	 * is that multiple subsite admins could run precache operations at the same/overlapping times
-	 * yet the precache php file has the same name or everyone. This will be unpredictible the problems
-	 * that will occur.
+	 * yet the precache php and log files have the same name for all subsites; precache.php files and
+	 * log files will be overwritten and deleted in unpredictible ways; logs from one subsite will be
+	 * visible in another subsite
 	 */
 	private function precache ( &$links ) {
-
 		/* double check if we do have any links to pre-cache */
-		if ( !empty ( $links ) && !$this->precache_running() )  {
-
+		if ( empty( $links ) )
+			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
+		else if ( $this->precache_running() )
+			return __('Precache process is already running. You must wait until it completes or flush the cache.', 'wp-ffpc');
+		else {
 			$out = '<?php
 				$links = ' . var_export ( $links , true ) . ';
 
@@ -1209,12 +1187,15 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				unlink ( "'. $this->precache_phpfile .'" );
 			?>';
 
-			file_put_contents ( $this->precache_phpfile, $out  );
+			if (false === file_put_contents( $this->precache_phpfile, $out ))
+				return __('Precache request failed. Unable to create temporary files.', 'wp-ffpc');
 			/* call the precache worker file in the background */
+			// BUGBUG the below assumes unix-like operating system; need to disallow Windows or use Windows methods on Windows
+			// e.g. php_uname() and pclose(popen("start \"bla\" \"" . $exe . "\" " . escapeshellarg($args), "r"));
 			$shellfunction = $this->shell_function;
 			$shellfunction( 'php '. $this->precache_phpfile .' >'. $this->precache_logfile .' 2>&1 &' );
+			return true;
 		}
-
 	}
 
 	/**
@@ -1269,10 +1250,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$this->precache_list_permalinks ( $links, false );
 		}
 
-		/* double check if we do have any links to pre-cache */
-		if ( !empty ( $links ) )  {
-			$this->precache ( $links );
-		}
+		/* request start of precache process */
+		return $this->precache( $links );
 	}
 
 	/**

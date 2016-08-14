@@ -31,7 +31,6 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $plugin_constant;
 	protected $options = array();
 	protected $defaults = array();
-	protected $status = 0;
 	protected $network = false;
 	protected $settings_link = '';
 	protected $settings_slug = '';
@@ -45,6 +44,8 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $plugin_settings_page;
 	protected $button_save;
 	protected $button_delete;
+	protected $button_flush;
+	protected $button_precache;
 	protected $capability = 'manage_options';
 	protected $admin_css_handle;
 	protected $admin_css_url;
@@ -78,6 +79,9 @@ abstract class WP_FFPC_ABSTRACT {
 
 		$this->button_save = $this->plugin_constant . '-save';
 		$this->button_delete = $this->plugin_constant . '-delete';
+		$this->button_flush = $this->plugin_constant . '-flush';
+		$this->button_precache = $this->plugin_constant . '-precache';
+
 
 		if ( !empty( $donation_business_name ) &&  !empty( $donation_item_name ) && !empty( $donation_business_id ) ) {
 			$this->donation_business_name = $donation_business_name;
