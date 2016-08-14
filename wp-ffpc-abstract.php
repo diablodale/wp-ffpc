@@ -653,7 +653,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * display formatted alert message
 	 * 
-	 * @param string $msg Error message
+	 * @param string $msg error message; only single quotes are escaped, therefore possible to pass html
 	 * @param string $error "level" of error
 	 * @param boolean $network WordPress network or not, DEPRECATED
 	 * 
@@ -678,16 +678,16 @@ abstract class WP_FFPC_ABSTRACT {
 				break;
 		}
 
-		$r = '<div class="'. $css .'"><p>'. sprintf ( __('%s', 'PluginUtils' ),  $msg ) .'</p></div>';
+		$r = '<div class="'. $css .'"><p>'. $msg .'</p></div>';
 		if ( version_compare(phpversion(), '5.3.0', '>=')) {
 			// BUGBUG notices here and below will not appear in multisite network admin or multisite user admin pages
 			// see do_action's in wordpress\wp-admin\admin-header.php
-			add_action('admin_notices', function() use ($r) { echo $r; }, 10 );
+			add_action('admin_notices', function() use ($r) { echo $r; });
 		}
 		else {
-			global $tmp;
-			$tmp = $r;
-			$f = create_function ( '', 'global $tmp; echo $tmp;' );
+			// note that create_function() memory is not garbage collected until the end of the entire page script
+			// any escaping method should allow html within the message but no php
+			$f = create_function ( '', 'echo \'' . str_replace('\'', '&apos;', $r) . '\';' );
 			add_action('admin_notices', $f );
 		}
 		static::debug( $msg, $level );
