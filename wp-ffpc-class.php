@@ -277,45 +277,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * extending admin init
 	 */
 	public function plugin_extend_admin_init () {
-
-		/* handle cache flush or precache requests */
-		if ( isset( $_POST[$this->button_flush] ) ) {
-			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
-			/* remove precache log entry */
-			static::_delete_option( self::precache_log_option );
-			/* remove precache timestamp entry */
-			static::_delete_option( self::precache_timestamp_option );
-
-			/* remove precache logfile and PHP worker */
-			if ( @file_exists( $this->precache_logfile ) )
-				unlink ( $this->precache_logfile );
-			if ( @file_exists( $this->precache_phpfile ) )
-				unlink ( $this->precache_phpfile );
-
-			/* flush backend */
-			// BUGBUG dangerous in multisite; the code allows subsite admins to clear entire cache systems
-			// which affects other subsites and applications. When multisite, code needs to isolate any cache
-			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
-			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
-			$this->backend->clear( false, true );
-			static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
-		}
-		else if ( isset( $_POST[$this->button_precache] ) ) {
-			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
-			/* if available shell function then start precache */
-			if ( false === $this->shell_function )
-				__( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');				
-			else {		
-				$precache_result = $this->precache_coldrun();
-				if ( true === $precache_result)
-					static::alert( __( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') , LOG_NOTICE );
-				else if ( false === $precache_result)
-					static::alert( __( 'Precache process failed to start for an unexpected reason' , 'wp-ffpc') , LOG_WARNING );
-				else
-					static::alert( $precache_result, LOG_WARNING );
-			}
-		}
-
 		// hook in publisher of admin notices that will appear on all admin pages; enables late logic/validation yet can still publish admin notices
 		add_action( 'admin_head', array( &$this, 'plugin_admin_notice_publisher_all_pages' ) );
 
@@ -412,9 +373,65 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	}
 
 	/**
-	 * hook handler for admin pages load-($hook_suffix)
+	 * hook handler for plugin's setting page via load-($hook_suffix)
 	 */
 	public function plugin_admin_load_dash() {
+		// security check
+		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) wp_die( );
+
+		/* save parameter updates, if there are any */
+		if ( isset( $_POST[ $this->button_save ] ) ) {
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
+			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
+			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
+			static::alert( __( 'Settings saved to database.' , 'wp-ffpc') , LOG_NOTICE );
+		}
+		/* delete parameters if requested */
+		else if ( isset( $_POST[ $this->button_delete ] ) ) {
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
+			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
+			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
+			static::alert( __( 'Plugin options deleted from database.' , 'wp-ffpc') , LOG_NOTICE );
+		}
+		/* handle cache flush */
+		else if ( isset( $_POST[$this->button_flush] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
+			/* remove precache log entry */
+			static::_delete_option( self::precache_log_option );
+			/* remove precache timestamp entry */
+			static::_delete_option( self::precache_timestamp_option );
+
+			/* remove precache logfile and PHP worker */
+			if ( @file_exists( $this->precache_logfile ) )
+				unlink ( $this->precache_logfile );
+			if ( @file_exists( $this->precache_phpfile ) )
+				unlink ( $this->precache_phpfile );
+
+			/* flush backend */
+			// BUGBUG dangerous in multisite; the code allows subsite admins to clear entire cache systems
+			// which affects other subsites and applications. When multisite, code needs to isolate any cache
+			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
+			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
+			$this->backend->clear( false, true );
+			static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
+		}
+		/* handle precache requests */
+		else if ( isset( $_POST[$this->button_precache] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
+			/* if available shell function then start precache */
+			if ( false === $this->shell_function )
+				__( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');				
+			else {		
+				$precache_result = $this->precache_coldrun();
+				if ( true === $precache_result)
+					static::alert( __( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') , LOG_NOTICE );
+				else if ( false === $precache_result)
+					static::alert( __( 'Precache process failed to start for an unexpected reason' , 'wp-ffpc') , LOG_WARNING );
+				else
+					static::alert( $precache_result, LOG_WARNING );
+			}
+		}
+
 		// add custom help tab for nginx setup
 		if ( method_exists( 'WP_Screen', 'add_help_tab' ) ) {
 			$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
@@ -428,17 +445,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			) );
 		}
 
-		// TODO move logic that processes save, delete, precache, flush to here
+		// enqueue scripts
+		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
 	}
 
 	/**
 	 * admin panel, the admin page displayed for plugin settings
 	 */
 	public function plugin_admin_panel() {
-		/**
-		 * security check
-		 */
-		if ( !current_user_can( parent::CAPABILITY_NEEDED ) ) wp_die( );
 		?>
 
 		<div class="wrap">

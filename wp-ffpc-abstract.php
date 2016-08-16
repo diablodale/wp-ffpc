@@ -245,29 +245,6 @@ abstract class WP_FFPC_ABSTRACT {
 		else
 			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 
-		// security check before processing save/delete
-		// TODO need to move save/delete processing outside this general admin hook and put into page specific hook 
-		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) wp_die( );
-
-		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_save ] ) ) {
-			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
-			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
-			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
-			static::alert( __( 'Settings saved to database.' , 'wp-ffpc') , LOG_NOTICE );
-		}
-
-		/* delete parameters if requested */
-		if ( isset( $_POST[ $this->button_delete ] ) ) {
-			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
-			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
-			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
-			static::alert( __( 'Plugin options deleted from database.' , 'wp-ffpc') , LOG_NOTICE );
-		}
-
-		// TODO only enqueue this script on the specific plugin settings page
-		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
-
 		/* load additional moves */
 		$this->plugin_extend_admin_init();		
 	}
