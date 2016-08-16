@@ -316,20 +316,26 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			}
 		}
 
-		/* hook in additional contextual help */
+		// hook in publisher of admin notices that will appear on all admin pages; enables late logic/validation yet can still publish admin notices
+		add_action( 'admin_head', array( &$this, 'plugin_admin_notice_publisher_all_pages' ) );
+
+		/* hook in plugin settings page specific actions and filters */
 		if ( $this->settings_page_hook_suffix ) {
 			add_filter( 'contextual_help', array( &$this, 'plugin_admin_help' ), 10, 3 );	// legacy method WP 3.0+
-			add_action( 'load-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_nginx_help' ) );
+			add_action( 'load-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_load_dash' ) );
+			add_action( 'admin_head-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_notice_publisher_settings_page' ) );
 		}
+	}
 
+	public function plugin_admin_notice_publisher_all_pages() {
 		/* validation and checks */
 		if ( !WP_CACHE )
 			static::alert( __('WP_CACHE is disabled therefore cache plugins will not work. Please add <code>define(\'WP_CACHE\', true);</code> to the beginning of wp-config.php.', 'wp-ffpc'), LOG_WARNING);
 
 		/* look for global settings array and acache file*/
 		// BUGBUG lack of error handling/returns in saving code can make $this->global_saved errant
+		$settings_link = '<a href="' . $this->settings_link . '">' . __( 'WP-FFPC Settings', 'wp-ffpc') . '</a>';
 		if ( ( !$this->global_saved ) || ( !array_key_exists('wp_ffpc_config', $GLOBALS) ) ) {
-			$settings_link = '<a href="' . $this->settings_link . '">' . __( 'WP-FFPC Settings', 'wp-ffpc') . '</a>';
 			if ( !array_key_exists('wp_ffpc_config', $GLOBALS) )
 				$not_there[] = __('cache config file', 'wp-ffpc');
 			if ( !$this->global_saved )
@@ -343,7 +349,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			global $wp_ffpc_config;
 			/* look for extensions that should be available */
 			if (false === $this->valid_cache_type[$wp_ffpc_config['cache_type']])
-				static::alert( sprintf ( __('%s cache backend selected but no PHP %s extension was found. Please activate the PHP %s extension or choose a different backend.', 'wp-ffpc'), $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'] ), LOG_WARNING);
+				static::alert( sprintf ( __('%s cache backend selected but no PHP %s extension was found. Please activate the PHP %s extension or choose a different backend in %s.', 'wp-ffpc'), $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $settings_link ), LOG_WARNING);
 			else if ( ( 'memcache' === $wp_ffpc_config['cache_type'] ) && ( true === $this->valid_cache_type['memcache'] ) ) {
 				/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
 				$memcache_settings = ini_get_all( 'memcache' );
@@ -353,6 +359,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 						static::alert( __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc'), LOG_WARNING);
 				}
 			}
+		}
+	}
+
+	public function plugin_admin_notice_publisher_settings_page() {
+		if ( isset($GLOBALS['wp_ffpc_config']) ) {
+			global $wp_ffpc_config;
 			/* display backend status if memcache-like extension is running */
 			if ( strstr( $wp_ffpc_config['cache_type'], 'memcache') ) {
 				$notice = '<span class="memcache-stat-title">' . $wp_ffpc_config['cache_type'] . __(' backend status') . '</span><br/>';
@@ -400,20 +412,23 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	}
 
 	/**
-	 * admin help panel
+	 * hook handler for admin pages load-($hook_suffix)
 	 */
-	//public function plugin_admin_nginx_help( $contextual_help, $screen_id, $screen ) {
-	public function plugin_admin_nginx_help() {
-		$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
-		$content .= __('<div class="update-nag">This is not meant to be a copy-paste configuration; you most probably have to tailor it to your needs.</div>', 'wp-ffpc');
-		$content .= __('<div class="update-nag"><strong>In case you are about to use nginx to fetch memcached entries directly and to use SHA1 hash keys, you will need an nginx version compiled with <a href="http://wiki.nginx.org/HttpSetMiscModule">HttpSetMiscModule</a>. Otherwise set_sha1 function is not available in nginx.</strong></div>', 'wp-ffpc');
-		$content .= '<code><pre>' . $this->nginx_example() . '</pre></code>';
+	public function plugin_admin_load_dash() {
+		// add custom help tab for nginx setup
+		if ( method_exists( 'WP_Screen', 'add_help_tab' ) ) {
+			$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
+			$content .= __('<div class="update-nag">This is not meant to be a copy-paste configuration; you most probably have to tailor it to your needs.</div>', 'wp-ffpc');
+			$content .= __('<div class="update-nag"><strong>In case you are about to use nginx to fetch memcached entries directly and to use SHA1 hash keys, you will need an nginx version compiled with <a href="http://wiki.nginx.org/HttpSetMiscModule">HttpSetMiscModule</a>. Otherwise set_sha1 function is not available in nginx.</strong></div>', 'wp-ffpc');
+			$content .= '<code><pre>' . $this->nginx_example() . '</pre></code>';
+			get_current_screen()->add_help_tab( array(
+					'id'		=> 'wp-ffpc-nginx-help',
+					'title'		=> __( 'nginx example', 'wp-ffpc' ),
+					'content'	=> $content,
+			) );
+		}
 
-		get_current_screen()->add_help_tab( array(
-				'id'		=> 'wp-ffpc-nginx-help',
-				'title'		=> __( 'nginx example', 'wp-ffpc' ),
-				'content'	=> $content,
-		) );
+		// TODO move logic that processes save, delete, precache, flush to here
 	}
 
 	/**
