@@ -26,7 +26,7 @@ if (!class_exists('WP_FFPC_ABSTRACT')):
  */
 abstract class WP_FFPC_ABSTRACT {
 
-	const common_slug = 'wp-common/';
+	const CAPABILITY_NEEDED = 'manage_options';
 
 	protected $plugin_constant;
 	protected $options = array();
@@ -34,6 +34,7 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $network = false;
 	protected $settings_link = '';
 	protected $settings_slug = '';
+	protected $settings_page_hook_suffix = false;
 	protected $plugin_url;
 	protected $plugin_dir;
 	protected $common_url;
@@ -46,7 +47,6 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $button_delete;
 	protected $button_flush;
 	protected $button_precache;
-	protected $capability = 'manage_options';
 	protected $admin_css_handle;
 	protected $admin_css_url;
 	protected $utils = null;
@@ -106,7 +106,7 @@ abstract class WP_FFPC_ABSTRACT {
 		}
 
 		/* set the settings page link string */
-		$this->settings_link = $this->settings_slug . '?page=' .  $this->plugin_settings_page;
+		$this->settings_link = admin_url( $this->settings_slug . '?page=' .  $this->plugin_settings_page );
 
 		/* initialize plugin, plugin specific init functions */
 		$this->plugin_post_construct();
@@ -116,9 +116,6 @@ abstract class WP_FFPC_ABSTRACT {
 		// Some of the code, like the above forced load of wp-admin/includes/plugin.php (which
 		// is loaded by the time admin_init occurs) can be altered. No need to run admin page code on non-admin pages.
 		add_action( 'init', array(&$this,'plugin_init'));
-		add_action( 'admin_init', array(&$this,'plugin_admin_init'));
-		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
-
 	}
 
 	/**
@@ -157,19 +154,15 @@ abstract class WP_FFPC_ABSTRACT {
 		register_activation_hook( $this->plugin_file , array( &$this, 'plugin_activate' ) );
 		register_deactivation_hook( $this->plugin_file , array( &$this, 'plugin_deactivate' ) );
 
-		/* register settings pages */
-		if ( $this->network )
-			add_filter( "network_admin_plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
-		else
-			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
-
-		/* register admin init, catches $_POST and adds submenu to admin menu */
-		if ( $this->network )
-			add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
-		else
-			add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
-
-		add_filter('contextual_help', array( &$this, 'plugin_admin_help' ), 10, 2);
+		// admin pages only
+		if ( is_admin() ) {
+			add_action( 'admin_init', array(&$this,'plugin_admin_init'));
+			/* register to add submenu to admin menu */
+			if ( $this->network )
+				add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
+			else
+				add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
+		}
 
 		/* setup plugin, plugin specific setup functions that need options */
 		$this->plugin_post_init();
@@ -184,7 +177,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * admin help menu
 	 */
-	abstract function plugin_admin_help( $contextual_help, $screen_id );
+	abstract function plugin_admin_help( $contextual_help, $screen_id, $screen );
 
 	/**
 	 * initial setup of WP Filesystem API to get credentials
@@ -246,16 +239,21 @@ abstract class WP_FFPC_ABSTRACT {
 	 * admin init called by WordPress add_action, needs to be public
 	 */
 	public function plugin_admin_init() {
+		/* register setting link for the plugin page */
+		if ( $this->network )
+			add_filter( "network_admin_plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
+		else
+			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
+
+		// security check before processing save/delete
+		// TODO need to move save/delete processing outside this general admin hook and put into page specific hook 
+		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) wp_die( );
+
 		/* save parameter updates, if there are any */
 		if ( isset( $_POST[ $this->button_save ] ) ) {
 			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
 			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
 			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
-			// BUGBUG warnings like "No WP-FFPC configuration settings are saved..." are
-			// showing even though the apc file was written and it seems it was saved into the db.
-			// Often on the immediate page after the change. I believe this is
-			// due to the warning tests being evaluated before the changes to the db.
-			// This logic flow error was being masked by the Header(location) hack I previously removed
 			static::alert( __( 'Settings saved to database.' , 'wp-ffpc') , LOG_NOTICE );
 		}
 
@@ -264,9 +262,11 @@ abstract class WP_FFPC_ABSTRACT {
 			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
 			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
 			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
-			// BUGBUG same warning display problems as above
 			static::alert( __( 'Plugin options deleted from database.' , 'wp-ffpc') , LOG_NOTICE );
 		}
+
+		// TODO only enqueue this script on the specific plugin settings page
+		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
 
 		/* load additional moves */
 		$this->plugin_extend_admin_init();		
@@ -278,7 +278,7 @@ abstract class WP_FFPC_ABSTRACT {
 	public function plugin_admin_menu() {
 		/* add submenu to settings pages */
 		// TODO consider switching to use add_options_page()
-		add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, $this->capability, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
+		$this->settings_page_hook_suffix = add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, self::CAPABILITY_NEEDED, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
 	}
 
 	/**
@@ -294,7 +294,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 *
 	 */
 	public function plugin_settings_link ( $links ) {
-		$settings_link = '<a href="' . $this->settings_link . '">' . __translate__( 'Settings', 'wp-ffpc') . '</a>';
+		$settings_link = '<a href="' . $this->settings_link . '">' . __( 'Settings', 'wp-ffpc') . '</a>';
 		array_unshift( $links, $settings_link );
 		return $links;
 	}
@@ -334,15 +334,20 @@ abstract class WP_FFPC_ABSTRACT {
 		/* this is the point to make any migrations from previous versions */
 		$this->plugin_options_migrate( $options );
 
-		/* map missing values from default */
-		foreach ( $this->defaults as $key => $default )
-			if ( !@array_key_exists ( $key, $options ) )
-				$options[$key] = $default;
+		if ( empty( $options ) ) {
+			$options = $this->defaults;
+		}
+		else {
+			/* map missing values from default */
+			foreach ( $this->defaults as $key => $default )
+				if ( !array_key_exists ( $key, $options ) )
+					$options[$key] = $default;
 
-		/* removed unused keys, rare, but possible */
-		foreach ( @array_keys ( $options ) as $key )
-			if ( !@array_key_exists( $key, $this->defaults ) )
-				unset ( $options[$key] );
+			/* removed unused keys, rare, but possible */
+			foreach ( array_keys ( $options ) as $key )
+				if ( !array_key_exists( $key, $this->defaults ) )
+					unset ( $options[$key] );
+		}
 
 		/* any additional read hook */
 		$this->plugin_extend_options_read( $options );

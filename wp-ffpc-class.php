@@ -196,8 +196,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		// instantiation into memory or cause a later object-not-found error when a
 		// scheduled run occurs. The precache operations would be better to be static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
-
-		add_filter('contextual_help', array( &$this, 'plugin_admin_nginx_help' ), 10, 2);
 	}
 
 	/**
@@ -279,6 +277,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * extending admin init
 	 */
 	public function plugin_extend_admin_init () {
+
 		/* handle cache flush or precache requests */
 		if ( isset( $_POST[$this->button_flush] ) ) {
 			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
@@ -315,6 +314,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				else
 					static::alert( $precache_result, LOG_WARNING );
 			}
+		}
+
+		/* hook in additional contextual help */
+		if ( $this->settings_page_hook_suffix ) {
+			add_filter( 'contextual_help', array( &$this, 'plugin_admin_help' ), 10, 3 );	// legacy method WP 3.0+
+			add_action( 'load-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_nginx_help' ) );
 		}
 
 		/* validation and checks */
@@ -376,10 +381,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * admin help panel
 	 */
-	public function plugin_admin_help($contextual_help, $screen_id ) {
-
+	public function plugin_admin_help( $contextual_help, $screen_id, $screen ) {
 		/* add our page only if the screenid is correct */
-		if ( strpos( $screen_id, $this->plugin_settings_page ) ) {
+		if ( $screen_id == $this->settings_page_hook_suffix ) {
 			$contextual_help = __('<p>Please visit <a href="http://wordpress.org/support/plugin/wp-ffpc">the official support forum of the plugin</a> for help.</p>', 'wp-ffpc');
 
 			/* [TODO] give detailed information on errors & troubleshooting
@@ -391,32 +395,25 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					</ol>' )
 			) );
 			*/
-
 		}
-
 		return $contextual_help;
 	}
 
 	/**
 	 * admin help panel
 	 */
-	public function plugin_admin_nginx_help($contextual_help, $screen_id ) {
+	//public function plugin_admin_nginx_help( $contextual_help, $screen_id, $screen ) {
+	public function plugin_admin_nginx_help() {
+		$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
+		$content .= __('<div class="update-nag">This is not meant to be a copy-paste configuration; you most probably have to tailor it to your needs.</div>', 'wp-ffpc');
+		$content .= __('<div class="update-nag"><strong>In case you are about to use nginx to fetch memcached entries directly and to use SHA1 hash keys, you will need an nginx version compiled with <a href="http://wiki.nginx.org/HttpSetMiscModule">HttpSetMiscModule</a>. Otherwise set_sha1 function is not available in nginx.</strong></div>', 'wp-ffpc');
+		$content .= '<code><pre>' . $this->nginx_example() . '</pre></code>';
 
-		/* add our page only if the screenid is correct */
-		if ( strpos( $screen_id, $this->plugin_settings_page ) ) {
-			$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
-			$content .= __('<div class="update-nag">This is not meant to be a copy-paste configuration; you most probably have to tailor it to your needs.</div>', 'wp-ffpc');
-			$content .= __('<div class="update-nag"><strong>In case you are about to use nginx to fetch memcached entries directly and to use SHA1 hash keys, you will need an nginx version compiled with <a href="http://wiki.nginx.org/HttpSetMiscModule">HttpSetMiscModule</a>. Otherwise set_sha1 function is not available in nginx.</strong></div>', 'wp-ffpc');
-			$content .= '<code><pre>' . $this->nginx_example() . '</pre></code>';
-
-			get_current_screen()->add_help_tab( array(
-					'id'		=> 'wp-ffpc-nginx-help',
-					'title'		=> __( 'nginx example', 'wp-ffpc' ),
-					'content'	=> $content,
-			) );
-		}
-
-		return $contextual_help;
+		get_current_screen()->add_help_tab( array(
+				'id'		=> 'wp-ffpc-nginx-help',
+				'title'		=> __( 'nginx example', 'wp-ffpc' ),
+				'content'	=> $content,
+		) );
 	}
 
 	/**
@@ -424,11 +421,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_panel() {
 		/**
-		 * security, if somehow we're running without WordPress security functions
+		 * security check
 		 */
-		if( ! function_exists( 'current_user_can' ) || ! current_user_can( 'manage_options' ) ){
-			die( );
-		}
+		if ( !current_user_can( parent::CAPABILITY_NEEDED ) ) wp_die( );
 		?>
 
 		<div class="wrap">
