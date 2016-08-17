@@ -407,6 +407,7 @@ abstract class WP_FFPC_Backend {
 		}
 
 		/* switch back to original site if we navigated away */
+		// BUGBUG not correctly restoring original site; see https://codex.wordpress.org/Function_Reference/restore_current_blog
 		if ( $site !== false ) {
 			switch_to_blog( $current_blog );
 		}

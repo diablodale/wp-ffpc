@@ -96,11 +96,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$_SERVER['HTTP_HOST'] = '127.0.0.1';
 
 		/* set global config key; here, because it's needed for migration */
-		if ( $this->network ) {
+		if ( static::$network_activated ) {
 			$this->global_config_key = 'network';
 		}
 		else {
 			// BUGBUG get_option should likely be get_site_option for the case -> multisite without network activate
+			// BUGBUG this only supports domain-style multisite; it doesn't support path-style multisite
 			$sitedomain = parse_url( get_option('siteurl') , PHP_URL_HOST);
 			if ( $_SERVER['HTTP_HOST'] != $sitedomain )
 				static::alert( sprintf( __("Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.", 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] ), LOG_WARNING);
@@ -812,8 +813,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 				<?php
 
-				$gentime = static::_get_option( self::precache_timestamp_option, $this->network );
-				$log = static::_get_option( self::precache_log_option, $this->network );
+				$gentime = static::_get_option( self::precache_timestamp_option, static::$network_activated );
+				$log = static::_get_option( self::precache_log_option, static::$network_activated );
 
 				if ( @file_exists ( $this->precache_logfile ) ) {
 					$logtime = filemtime ( $this->precache_logfile );
@@ -821,8 +822,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					/* update precache log in DB if needed */
 					if ( $logtime > $gentime ) {
 						$log = file ( $this->precache_logfile );
-						static::_update_option( self::precache_log_option, $log, $this->network );
-						static::_update_option( self::precache_timestamp_option, $logtime, $this->network );
+						static::_update_option( self::precache_log_option, $log, static::$network_activated );
+						static::_update_option( self::precache_timestamp_option, $logtime, static::$network_activated );
 					}
 
 				}
@@ -995,7 +996,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			/* look for previous config leftovers */
 			$try = get_site_option( 'wp-ffpc');
 			/* network option key changed, remove & migrate the leftovers if there's any */
-			if ( !empty ( $try ) && $this->network ) {
+			if ( !empty ( $try ) && static::$network_activated ) {
 				/* clean it up, we don't use it anymore */
 				delete_site_option ( 'wp-ffpc');
 
@@ -1177,11 +1178,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * generate cache entry for every available permalink, might be very-very slow,
 	 * therefore it starts a background process
-	 * BUGBUG this does not support multisite where it is NOT network activated. One problem
-	 * is that multiple subsite admins could run precache operations at the same/overlapping times
-	 * yet the precache php and log files have the same name for all subsites; precache.php files and
-	 * log files will be overwritten and deleted in unpredictible ways; logs from one subsite will be
-	 * visible in another subsite
+	 * BUGBUG this may not support multisite where it is NOT network activated. One problem
+	 * is that multiple subsite admins could run precache operations at the same/overlapping times. 
+	 * A quick hack of appending the blog id to the php and log filenames is in place. Needs much more testing.
 	 */
 	private function precache ( &$links ) {
 		/* double check if we do have any links to pre-cache */
@@ -1261,7 +1260,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		$links = array();
 
 		/* when plugin is  network wide active, we need to pre-cache for all link of all blogs */
-		if ( $this->network ) {
+		if ( static::$network_activated ) {
 			/* list all blogs */
 			global $wpdb;
 			$pfix = empty ( $wpdb->base_prefix ) ? 'wp_' : $wpdb->base_prefix;
@@ -1355,6 +1354,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		wp_reset_postdata();
 
 		/* switch back to original site if we navigated away */
+		// BUGBUG not correctly restoring original site; see https://codex.wordpress.org/Function_Reference/restore_current_blog
 		if ( $site !== false ) {
 			switch_to_blog( $current_blog );
 		}

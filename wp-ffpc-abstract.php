@@ -31,7 +31,7 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $plugin_constant;
 	protected $options = array();
 	protected $defaults = array();
-	protected $network = false;
+	protected static $network_activated = false;
 	protected $settings_link = '';
 	protected $settings_slug = '';
 	protected $settings_page_hook_suffix = false;
@@ -98,7 +98,7 @@ abstract class WP_FFPC_ABSTRACT {
 
 		/* check if plugin is network-activated */
 		if ( @is_plugin_active_for_network ( $this->plugin_file ) ) {
-			$this->network = true;
+			static::$network_activated = true;
 			$this->settings_slug = 'settings.php';
 		}
 		else {
@@ -106,7 +106,7 @@ abstract class WP_FFPC_ABSTRACT {
 		}
 
 		/* set the settings page link string */
-		$this->settings_link = admin_url( $this->settings_slug . '?page=' .  $this->plugin_settings_page );
+		$this->settings_link = $this->settings_slug . '?page=' . $this->plugin_settings_page;
 
 		/* initialize plugin, plugin specific init functions */
 		$this->plugin_post_construct();
@@ -158,7 +158,7 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( is_admin() ) {
 			add_action( 'admin_init', array(&$this,'plugin_admin_init'));
 			/* register to add submenu to admin menu */
-			if ( $this->network )
+			if ( static::$network_activated )
 				add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
 			else
 				add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
@@ -240,7 +240,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_init() {
 		/* register setting link for the plugin page */
-		if ( $this->network )
+		if ( static::$network_activated )
 			add_filter( "network_admin_plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 		else
 			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
@@ -291,7 +291,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * deletes saved options from database
 	 */
 	protected function plugin_options_delete () {
-		static::_delete_option ( $this->plugin_constant, $this->network );
+		static::_delete_option ( $this->plugin_constant, static::$network_activated );
 
 		/* additional moves */
 		$this->plugin_extend_options_delete();
@@ -306,7 +306,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * reads options stored in database and reads merges them with default values
 	 */
 	protected function plugin_options_read () {
-		$options = static::_get_option ( $this->plugin_constant, $this->network );
+		$options = static::_get_option ( $this->plugin_constant, static::$network_activated );
 
 		/* this is the point to make any migrations from previous versions */
 		$this->plugin_options_migrate( $options );
@@ -392,7 +392,7 @@ abstract class WP_FFPC_ABSTRACT {
 		$this->plugin_extend_options_save( $activating );
 
 		/* save options to database */
-		static::_update_option (  $this->plugin_constant , $this->options, $this->network );
+		static::_update_option (  $this->plugin_constant , $this->options, static::$network_activated );
 	}
 
 	/**
@@ -641,13 +641,23 @@ abstract class WP_FFPC_ABSTRACT {
 	 * 
 	 * @param string $msg error message; only single quotes are escaped, therefore possible to pass html
 	 * @param string $error "level" of error
-	 * @param boolean $network WordPress network or not, DEPRECATED
+	 * @param boolean $network_activated alert displayed for network admin only
 	 * 
 	 */
-	static public function alert ( $msg, $level=LOG_WARNING, $network=false ) {
-		if ( empty($msg)) return false;
+	static public function alert ( $msg, $level=LOG_WARNING, $network_activated=NULL ) {
 		//if ( php_sapi_name() === "cli" ) return false;
+		if ( empty($msg)) return false;
 
+		// don't show notices to users that can't do anything about them
+		// without this logic, it is possible for non-admins (e.g. subscribers) to see notices
+		// on their user profile editing page because that page is considered an "admin" page
+		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) return false;
+
+		// select to which admin pages these notices are visible
+		// network_activated=true means the superadmin network admin pages
+		// network_activated=false means the rest of the admin pages (except for the single site user profile pages due to a WP bug)
+		if (NULL === $network_activated) $network_activated = static::$network_activated;
+		
 		switch ($level) {
 			case LOG_WARNING:
 				//$css = "notice notice-warning";
@@ -666,17 +676,22 @@ abstract class WP_FFPC_ABSTRACT {
 
 		$r = '<div class="'. $css .'"><p>'. $msg .'</p></div>';
 		if ( version_compare(phpversion(), '5.3.0', '>=')) {
-			// BUGBUG notices here and below will not appear in multisite network admin or multisite user admin pages
-			// see do_action's in wordpress\wp-admin\admin-header.php
-			add_action('admin_notices', function() use ($r) { echo $r; });
+			if ($network_activated)
+				add_action('network_admin_notices', function() use ($r) { echo $r; });
+			else
+				add_action('admin_notices', function() use ($r) { echo $r; });
 		}
 		else {
 			// note that create_function() memory is not garbage collected until the end of the entire page script
 			// any escaping method should allow html within the message but no php
 			$f = create_function ( '', 'echo \'' . str_replace('\'', '&apos;', $r) . '\';' );
-			add_action('admin_notices', $f );
+			if ($network_activated)
+				add_action('network_admin_notices', $f );
+			else
+				add_action('admin_notices', $f );
 		}
 		static::debug( $msg, $level );
+		return true;
 	}
 
 }
