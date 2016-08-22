@@ -18,6 +18,15 @@ if ( !function_exists ('__debug__') ) {
 	}
 }
 
+// Workaround for Wordpress 3.0
+if ( !function_exists('get_current_blog_id') )
+{
+	function get_current_blog_id() {
+		global $blog_id;
+		return absint($blog_id);
+	}
+}
+
 if (!class_exists('WP_FFPC_ABSTRACT')):
 
 /**
@@ -279,11 +288,10 @@ abstract class WP_FFPC_ABSTRACT {
 	/* add admin styling */
 	public function enqueue_admin_css_js(){
 		/* jquery ui tabs is provided by WordPress */
-		wp_enqueue_script ( "jquery-ui-tabs" );
-		wp_enqueue_script ( "jquery-ui-slider" );
-
+		wp_enqueue_script ( "jquery-ui-tabs", false, array('jquery', 'jquery-ui-core' ) );
+		wp_enqueue_script ( "jquery-ui-slider", false, array('jquery') );
 		/* additional admin styling */
-		wp_register_style( $this->admin_css_handle, $this->admin_css_url, array('dashicons'), false, 'all' );
+		wp_register_style( $this->admin_css_handle, $this->admin_css_url, false, $this->plugin_version, 'all' );
 		wp_enqueue_style( $this->admin_css_handle );
 	}
 
@@ -481,7 +489,7 @@ abstract class WP_FFPC_ABSTRACT {
 
 	/**
 	 * creates PayPal donation form based on plugin details
-	 *
+	 * jQuery slider only exists in Wordpress 3.2+
 	 */
 	protected function plugin_donation_form () {
 		if ( $this->donation ) :
@@ -489,6 +497,7 @@ abstract class WP_FFPC_ABSTRACT {
 		<script>
 			jQuery(document).ready(function($) {
 				jQuery(function() {
+					if (!jQuery().slider) return;
 					var select = $( "#amount" );
 					var slider = $( '<div id="donation-slider"></div>' ).insertAfter( select ).slider({
 						min: 1,
@@ -666,7 +675,7 @@ abstract class WP_FFPC_ABSTRACT {
 				$css = "error notice notice-error";
 				break;
 			case LOG_INFO:
-				$css = "notice notice-info";
+				$css = "updated notice notice-info";
 				break;
 			case LOG_NOTICE:
 			default:

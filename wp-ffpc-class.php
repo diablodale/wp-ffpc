@@ -482,9 +482,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 			<?php $switcher_tabs = $this->plugin_admin_panel_get_tabs(); ?>
 			<ul class="tabs">
-				<?php foreach($switcher_tabs AS $tab_section => $tab_label): ?>
-				<li><a href="#<?= $this->plugin_constant ?>-<?= $tab_section ?>" class="wp-switch-editor"><?= $tab_label ?></a></li>
-				<?php endforeach; ?>
+					<?php foreach($switcher_tabs AS $tab_section => $tab_label)
+					echo '<li><a href="#' . $this->plugin_constant . '-' . $tab_section . '" class="wp-switch-editor">' . $tab_label . '</a></li>'; ?>
 			</ul>
 
 			<fieldset id="<?php echo $this->plugin_constant ?>-type">
@@ -798,7 +797,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			</dl>
 			</fieldset>
 
-			<fieldset id="<?php echo $this->plugin_constant ?>-precache">
+			<fieldset id="<?php echo $this->plugin_constant ?>-precachelog">
 			<legend><?php _e('Precache settings & log from previous pre-cache generation', 'wp-ffpc'); ?></legend>
 
 				<dt>
@@ -922,7 +921,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			'debug' => __( 'Debug & in-depth', 'wp-ffpc'),
 			'exceptions' => __( 'Cache exceptions', 'wp-ffpc'),
 			'servers' => __( 'Backend settings', 'wp-ffpc'),
-			'precache' => __( 'Precache & precache log', 'wp-ffpc')
+			'precachelog' => __( 'Precache & precache log', 'wp-ffpc')
 		);
 
 		return apply_filters('wp_ffpc_admin_panel_tabs', $default_tabs);

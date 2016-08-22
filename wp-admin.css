@@ -4,7 +4,6 @@
 }
 
 .plugin-admin fieldset {
-	display:block;
 	margin: 0;
 	padding: 0 1em 0 1em;
 	border: 1px solid #ccc;
@@ -75,13 +74,17 @@
 	clear:both;
 }
 
+.notice.notice-info {
+	border-color: #00a0d2;
+	background-color: #ffffff;
+}
+
 .wp-ffpc-donation {
 	padding: 0.8em;
 	border: 1px solid #ccc;
 	background-color: #f6f6f6;
 	-webkit-border-radius: 3px;
 	border-radius: 3px;
-
 }
 
 .wp-ffpc-donation * {

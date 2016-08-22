@@ -11,6 +11,15 @@ if ( !function_exists ('__translate__') ) {
 	}
 }
 
+// Workaround for Wordpress 3.0
+if ( !function_exists('get_current_blog_id') )
+{
+	function get_current_blog_id() {
+		global $blog_id;
+		return absint($blog_id);
+	}
+}
+
 /* this is the base class for all backends; the actual workers
  * are included at the end of the file from backends/ directory */
 
@@ -525,7 +534,11 @@ abstract class WP_FFPC_Backend {
 
 endif;
 
-
+// TODO replace the below code with deterministic loading
+// because dynamic directory listing and loading of files is not a performant
+// approach. Going to disk is always bad with caches. The code of wp-ffpc is
+// always tested and released together as a matching bundle of files. Therefore,
+// the files to load are always known and remove the need to dynamically go to disk.
 $wp_ffpc_backends = glob( dirname( __FILE__ ) . "/backends/*.php" );
 foreach ( $wp_ffpc_backends as $backend )
 	include_once $backend;

@@ -146,10 +146,7 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 			$this->log ( sprintf( __translate__( 'unable to delete entry(s): %s', $this->plugin_constant ),  json_encode($key) ) );
 			$this->log ( sprintf( __translate__( 'Redis error: %s', $this->plugin_constant ),  json_encode($e) ) );
 		}
-		finally {
-			$this->log ( sprintf( __translate__( 'entry(s) deleted: %s', $this->plugin_constant ),  json_encode($keys) ) );
-		}
-
+		$this->log ( sprintf( __translate__( 'entry(s) deleted: %s', $this->plugin_constant ),  json_encode($keys) ) );
 	}
 }
 
