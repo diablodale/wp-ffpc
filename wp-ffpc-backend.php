@@ -403,13 +403,19 @@ abstract class WP_FFPC_Backend {
 
 						/* get the permalink for the term */
 						$link = get_term_link ( $term->slug, $taxonomy->name );
-						/* add to container */
 						$links[ $link ] = true;
+
 						/* remove the taxonomy name from the link, lots of plugins remove this for SEO, it's better to include them than leave them out in worst case, we cache some 404 as well
+						 * BUGBUG this hack needs to be reviewed since the caching backend should always
+						 * store and lookup internally using canonical urls. SEO changed/duplicated external URLs
+						 * should always resolve to the same canonical urls and therefore not need these hacked
+						 * precache crawls
 						*/
-						$link = str_replace ( '/'.$taxonomy->rewrite['slug'], '', $link  );
-						/* add to container */
-						$links[ $link ] = true;
+						// check that we have a rewrite for pretty permalinks; if yes, then remove the slug as per hack
+						if (isset($taxonomy->rewrite['slug'])) {
+							$link = str_replace ( '/' . $taxonomy->rewrite['slug'] . '/', '/', $link  );
+							$links[ $link ] = true;
+						}
 					}
 				}
 			}
