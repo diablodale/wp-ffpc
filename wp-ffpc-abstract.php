@@ -703,6 +703,25 @@ abstract class WP_FFPC_ABSTRACT {
 		return true;
 	}
 
+	// determine os
+	static public function isWindows() {	 
+		$uname = strtolower(php_uname());
+		$retVal = false;
+		if (false !== strpos($uname, "darwin")) {
+			// It's OSX
+		} else if (false !== strpos($uname, "cygwin")) {
+			// It's Cygwin
+		} else if (false !== strpos($uname, "win")) {
+			// It's windows
+			$retVal = true;
+		} else if (false !== strpos($uname, "linux")) {
+			// It's Linux
+		} else {
+			// It's something else e.g. Solaris, HPUX, etc.
+		}
+		return $retVal;
+	}
+
 }
 
 endif;

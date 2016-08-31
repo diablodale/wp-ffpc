@@ -16,7 +16,6 @@ include_once ( dirname(__FILE__) .'/wp-ffpc-backend.php' );
  * @var string $acache_backend	backend driver file, bundled with the plugin
  * @var string $global_option	global options identifier
  * @var string $precache_logfile	Precache log file location
- * @var string $precache_phpfile	Precache PHP worker location
  * @var array $shell_possibilities	List of possible precache worker callers
  [TODO] finish list of vars
  */
@@ -26,10 +25,12 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	const donation_id_key = 'hosted_button_id=';
 	const precache_log_option = 'wp-ffpc-precache-log';
 	const precache_timestamp_option = 'wp-ffpc-precache-timestamp';
-	const precache_files_prefix = 'wp-ffpc-precache-';
+	const precache_worker_prefix = 'wp-ffpc-precache-';
 	const precache_id = 'wp-ffpc-precache-task';
+	const precache_phpfile = 'wp-ffpc-precache.php';
+	private $siteblogid = '';
 	private $precache_logfile = '';
-	private $precache_phpfile = '';
+	private $precache_datafile = '';
 	private $global_option = '';
 	private $global_config_key = '';
 	private $global_config = array();
@@ -75,10 +76,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		$this->acache_backend = $this->plugin_dir . $this->plugin_constant . '-engine.php';
 		/* global options identifier */
 		$this->global_option = $this->plugin_constant . '-global';
+		/* site and blog id token */
+		if (is_multisite())
+			$this->siteblogid = get_current_site()->id . '-' . get_current_blog_id();
+		else
+			$this->siteblogid = '0-0';
+		/* precache worker temporary directory */
+		$this->precache_worker_dir = trailingslashit(sys_get_temp_dir()) . $this->plugin_constant;
 		/* precache log */
-		$this->precache_logfile = trailingslashit(sys_get_temp_dir()) . self::precache_files_prefix . get_current_blog_id() . '.log';
-		/* this is the precacher php worker file */
-		$this->precache_phpfile = trailingslashit(sys_get_temp_dir()) . self::precache_files_prefix . get_current_blog_id() . '.php';
+		$this->precache_logfile = $this->precache_worker_dir . '/' . self::precache_worker_prefix . $this->siteblogid . '.log';
+		/* precache data file containing urls to precache */
+		$this->precache_datafile = $this->precache_worker_dir . '/' . self::precache_worker_prefix . $this->siteblogid . '.data';
 		/* search for a system function */
 		$this->shell_possibilities = array ( 'shell_exec', 'exec', 'system', 'passthru' );
 		/* get disabled functions list */
@@ -193,9 +201,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			add_filter('redirect_canonical', 'wp_ffpc_redirect_callback', 10, 2);
 
 		/* add precache coldrun action for scheduled runs */
-		// TODO test this method of passing a reference to $this. Seems it would lock this
-		// instantiation into memory or cause a later object-not-found error when a
-		// scheduled run occurs. The precache operations would be better to be static
+		// TODO try to make precache operations as static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
 	}
 
@@ -402,11 +408,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			/* remove precache timestamp entry */
 			static::_delete_option( self::precache_timestamp_option );
 
-			/* remove precache logfile and PHP worker */
-			if ( @file_exists( $this->precache_logfile ) )
-				unlink ( $this->precache_logfile );
-			if ( @file_exists( $this->precache_phpfile ) )
-				unlink ( $this->precache_phpfile );
+			/* stop any precache currently running for the current siteid-blogid*/
+			$precache_stopped = $this->precache_stop();
 
 			/* flush backend */
 			// BUGBUG dangerous in multisite; the code allows subsite admins to clear entire cache systems
@@ -414,13 +417,16 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
 			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
 			$this->backend->clear( false, true );
-			static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
+			if ($precache_stopped)
+				static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
+			else
+				static::alert( __( 'Cache flushed yet unable to stop the precache crawl in progress.' , 'wp-ffpc') , LOG_WARNING );
 		}
 		/* handle precache requests */
 		else if ( isset( $_POST[$this->button_precache] ) ) {
 			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
 			/* if available shell function then start precache */
-			if ( false === $this->shell_function )
+			if ( false === $this->shell_function )	// BUGBUG remove this logic and keep it in the precaching function
 				__( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');				
 			else {		
 				$precache_result = $this->precache_coldrun();
@@ -1177,6 +1183,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * generate cache entry for every available permalink, might be very-very slow,
 	 * therefore it starts a background process
+	 * Note: Because it is not guaranteed that advanced process mgmt like forking or
+	 * direct file descriptors is installed, the input/output to the worker is done
+	 * by simple files. I acknowledge this could be a security issue and I can only
+	 * hope that the *nix or Windows security model will protect against anyone altering
+	 * files during read/write of them
 	 * BUGBUG this may not support multisite where it is NOT network activated. One problem
 	 * is that multiple subsite admins could run precache operations at the same/overlapping times. 
 	 * A quick hack of appending the blog id to the php and log filenames is in place. Needs much more testing.
@@ -1187,67 +1198,68 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
 		else if ( $this->precache_running() )
 			return __('Precache process is already running. You must wait until it completes or flush the cache.', 'wp-ffpc');
-		else {
-			$out = '<?php
-				$links = ' . var_export ( $links , true ) . ';
+		
+		$links = array_keys($links);
+		if ( empty( $links ) )
+			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
 
-				echo "permalink\tgeneration time (s)\tsize ( kbyte )\n";
-				foreach ( $links as $permalink => $dummy ) {
-					$starttime = explode ( " ", microtime() );
-					$starttime = $starttime[1] + $starttime[0];
+		// create temporary directory to hold list of links and log file
+		if (!is_dir($this->precache_worker_dir))
+			mkdir($this->precache_worker_dir, 0700);
+		if (is_dir($this->precache_worker_dir))
+			chmod($this->precache_worker_dir, 0700);
+		else
+			return __('Failed to make precache worker temporary directory. Precache request cancelled.', 'wp-ffpc');
 
-					$page = @file_get_contents( $permalink );
-					if (false === $page) {
-						$size = 0;
-						$endtime = 0;
-						//$permalink = $http_response_header[0] . \' \' . $permalink;
-					}
-					else {
-						$size = round ( ( strlen ( $page ) / 1024 ), 2 );
-						$endtime = explode ( " ", microtime() );
-						$endtime = round( ( $endtime[1] + $endtime[0] ) - $starttime, 2 );
-					}
-					echo $permalink . "\t" .  $endtime . "\t" . $size . "\n";
-					unset ( $page, $size, $starttime, $endtime );
-					sleep( 1 );
-				}
-				unlink ( "'. $this->precache_phpfile .'" );
-			?>';
+		// write links to data file
+		if (false === file_put_contents($this->precache_datafile, implode(PHP_EOL, $links), LOCK_EX))
+			return __('Failed to send URLs to precache worker using temporary directory. Precache request cancelled.', 'wp-ffpc');
+		
+		// create command string for *nix or windows
+		if (static::isWindows())
+			$strCommand = 'start /b php "' . trailingslashit(dirname(__FILE__)) . self::precache_phpfile . '" "' . $this->precache_datafile . '" "' . $this->precache_logfile . '" 2>> "' . $this->precache_logfile . '"';
+		else
+			$strCommand = 'nohup php "' . trailingslashit(dirname(__FILE__)) . self::precache_phpfile . '" "' . $this->precache_datafile . '" "' . $this->precache_logfile . '" > /dev/null 2>> "' . $this->precache_logfile . '" & echo $?';
 
-			if (false === file_put_contents( $this->precache_phpfile, $out ))
-				return __('Precache request failed. Unable to create temporary files.', 'wp-ffpc');
-			/* call the precache worker file in the background */
-			// BUGBUG the below assumes unix-like operating system; need to disallow Windows or use Windows methods on Windows
-			// e.g. php_uname() and pclose(popen("start \"bla\" \"" . $exe . "\" " . escapeshellarg($args), "r"));
-			$shellfunction = $this->shell_function;
-			$shellfunction( 'php '. $this->precache_phpfile .' >'. $this->precache_logfile .' 2>&1 &' );
-			return true;
-		}
+		// start worker background process for precache
+		exec($strCommand, $outCommand);
+		if ("0" !== $outCommand[0])
+			return __('Precache worker failed to start. Error = ' . $outCommand[0], 'wp-ffpc');
+		return true;
 	}
 
 	/**
 	 * check is precache is still ongoing
-	 *
+	 * returns false or the integer process id of the precache worker
 	 */
-	private function precache_running () {
-		$return = false;
+	private function precache_running() {
+		// get list of processes and filter to be only the process working on this site/blog's datafile
+		if (static::isWindows())
+			$processId = false;	// TODO with tasklist
+		else
+			$processId = exec('ps aux | grep "' . $this->precache_datafile . '" | grep -v grep | awk \'{print $2}\'');
+		if (empty($processId) || (!is_numeric($processId)))
+			return false;
+		return intval($processId);
+	}
 
-		/* if the precache file exists, it did not finish running as it should delete itself on finish */
-		if ( file_exists ( $this->precache_phpfile )) {
-			$return = true;
+	/**
+	 * stop precache worker for current siteid-blogid
+	 */
+	private function precache_stop() {
+		// get list of processes and filter to be only the process working on this site/blog's datafile
+		$processId = $this->precache_running();
+		if (false !== $processId) {
+			// worker is still running; kill process
+			exec('kill -9 ' . $processId);
+			sleep(1);
+			$processId = $this->precache_running();
+			if (false !== $processId)
+				return false;
 		}
-		/*
-		 [TODO] cross-platform process check; this is *nix only
-		else {
-			$shellfunction = $this->shell_function;
-			$running = $shellfunction( "ps aux | grep \"". $this->precache_phpfile ."\" | grep -v grep | awk '{print $2}'" );
-			if ( is_int( $running ) && $running != 0 ) {
-				$return = true;
-			}
-		}
-		*/
-
-		return $return;
+		if (file_exists($this->precache_datafile))
+			unlink($this->precache_datafile);	// remove if worker failed to do so
+		return true;
 	}
 
 	/**
