@@ -704,7 +704,7 @@ abstract class WP_FFPC_ABSTRACT {
 	}
 
 	// determine os
-	static public function isWindows() {	 
+	static public function isWindows() {
 		$uname = strtolower(php_uname());
 		$retVal = false;
 		if (false !== strpos($uname, "darwin")) {
@@ -720,6 +720,29 @@ abstract class WP_FFPC_ABSTRACT {
 			// It's something else e.g. Solaris, HPUX, etc.
 		}
 		return $retVal;
+	}
+
+	// workaround for ini_get inconsistent return values for boolean ini keys
+	// probably better to compare the return result of this function with a double equals ==
+	static public function ini_get_bool( $inikey ) {
+		$inival = ini_get($inikey);
+
+		switch (strtolower($inival))
+		{
+		case 'on':
+		case 'yes':
+		case 'true':
+		case '1':
+			return true;
+		case 'off':
+		case 'no':
+		case 'false':
+		case '0':
+		case '':
+			return false;
+		default:
+			return $inival;
+		}
 	}
 
 }
