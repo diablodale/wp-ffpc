@@ -253,7 +253,7 @@ abstract class WP_FFPC_Backend {
 			$result = $this->_flush();
 
 			if ( $result === false )
-				$this->log (  __translate__('failed to flush cache', 'wp-ffpc'), LOG_WARNING );
+				$this->log (  __translate__('failed to empty cache', 'wp-ffpc'), LOG_WARNING );
 
 			return $result;
 		}

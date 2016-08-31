@@ -135,7 +135,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		/* invalidation method possible values array */
 		$this->select_invalidation_method = array (
-			0 => __( 'flush cache' , 'wp-ffpc'),
+			0 => __( 'empty cache' , 'wp-ffpc'),
 			1 => __( 'only modified post' , 'wp-ffpc'),
 			2 => __( 'modified post and all taxonomies' , 'wp-ffpc'),
 			3 => __( 'modified post and posts index page' , 'wp-ffpc'),
@@ -418,9 +418,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
 			$this->backend->clear( false, true );
 			if ($precache_stopped)
-				static::alert( __( 'Cache flushed.' , 'wp-ffpc') , LOG_NOTICE );
+				static::alert( __( 'Cache emptied.' , 'wp-ffpc') , LOG_NOTICE );
 			else
-				static::alert( __( 'Cache flushed yet unable to stop the precache crawl in progress.' , 'wp-ffpc') , LOG_WARNING );
+				static::alert( __( 'Cache emptied yet unable to stop the precache crawl in progress.' , 'wp-ffpc') , LOG_WARNING );
 		}
 		/* handle precache requests */
 		else if ( isset( $_POST[$this->button_precache] ) ) {
@@ -804,7 +804,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			</fieldset>
 
 			<fieldset id="<?php echo $this->plugin_constant ?>-precachelog">
-			<legend><?php _e('Precache settings & log from previous pre-cache generation', 'wp-ffpc'); ?></legend>
+			<legend><?php _e('Precache settings & log from previous precache generation', 'wp-ffpc'); ?></legend>
 
 				<dt>
 					<label for="precache_schedule"><?php _e('Precache schedule', 'wp-ffpc'); ?></label>
@@ -836,11 +836,13 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				if ( empty ( $log ) ) {
 					_e('No precache log was found!', 'wp-ffpc');
 				}
-				else { ?>
-					<p><strong><?php _e( 'Time of run: ') ?><?php echo date('r', $gentime ); ?></strong></p>
-					<div  style="overflow: auto; max-height: 20em;"><table style="width:100%; border: 1px solid #ccc;">
+				else {
+					// BUGBUG this log viewing UI is not usable for large sites with large log filesize
+					// a more scalable UI mechanism needs to be written
+					?><p><strong><?php _e( 'Time of run: ') ?><?php echo date('r', $gentime ); ?></strong></p>
+					<div style="overflow: auto; max-height: 20em;"><table style="width:100%; border: 1px solid #ccc;">
 						<thead><tr>
-								<?php $head = explode( "	", array_shift( $log ));
+								<?php $head = explode( "\t", array_shift( $log ));
 								foreach ( $head as $column ) { ?>
 									<th><?php echo $column; ?></th>
 								<?php } ?>
@@ -848,7 +850,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 						<?php
 						foreach ( $log as $line ) { ?>
 							<tr>
-								<?php $line = explode ( "	", $line );
+								<?php $line = explode( "\t", $line );
 								foreach ( $line as $column ) { ?>
 									<td><?php echo $column; ?></td>
 								<?php } ?>
@@ -886,11 +888,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 							echo join( ',' , $this->shell_possibilities ); ?></strong>
 					<?php }
 					else { ?>
-						<input class="button-secondary" type="submit" name="<?php echo $this->button_precache ?>" id="<?php echo $this->button_precache ?>" value="<?php _e('Pre-cache', 'wp-ffpc') ?>" />
+						<input class="wp-ffpc-button" type="submit" name="<?php echo $this->button_precache ?>" id="<?php echo $this->button_precache ?>" value="<?php _e('Precache', 'wp-ffpc') ?>" />
 					<?php } ?>
 				</dt>
 				<dd>
-					<span class="description"><?php _e('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to pre-cache.', 'wp-ffpc'); ?></span>
+					<span class="description"><?php _e('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to precache.', 'wp-ffpc'); ?></span>
 				</dd>
 			</dl>
 			</fieldset>
@@ -898,7 +900,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<input class="button-warning" type="submit" name="<?php echo $this->button_flush ?>" id="<?php echo $this->button_flush ?>" value="<?php _e('Clear cache', 'wp-ffpc') ?>" />
+					<input class="wp-ffpc-button wp-ffpc-button-warning" type="submit" name="<?php echo $this->button_flush ?>" id="<?php echo $this->button_flush ?>" value="<?php _e('Empty cache', 'wp-ffpc') ?>" />
 				</dt>
 				<dd>
 					<span class="description"><?php _e ( "Clear all entries in the storage, including the ones that were set by other processes.", 'wp-ffpc'); ?> </span>
@@ -909,7 +911,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<input class="button-warning" type="submit" name="<?php echo $this->button_delete ?>" id="<?php echo $this->button_delete ?>" value="<?php _e('Reset options', 'wp-ffpc') ?>" />
+					<input class="wp-ffpc-button wp-ffpc-button-warning" type="submit" name="<?php echo $this->button_delete ?>" id="<?php echo $this->button_delete ?>" value="<?php _e('Reset settings', 'wp-ffpc') ?>" />
 				</dt>
 				<dd>
 					<span class="description"><?php _e ( "Reset settings to defaults.", 'wp-ffpc'); ?> </span>
@@ -1193,11 +1195,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * A quick hack of appending the blog id to the php and log filenames is in place. Needs much more testing.
 	 */
 	private function precache ( &$links ) {
-		/* double check if we do have any links to pre-cache */
+		/* double check if we do have any links to precache */
 		if ( empty( $links ) )
 			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
 		else if ( $this->precache_running() )
-			return __('Precache process is already running. You must wait until it completes or flush the cache.', 'wp-ffpc');
+			return __('Precache process is already running. You must wait until it completes or empty the cache.', 'wp-ffpc');
 		
 		$links = array_keys($links);
 		if ( empty( $links ) )
@@ -1270,7 +1272,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/* container for links to precache, well be accessed by reference */
 		$links = array();
 
-		/* when plugin is  network wide active, we need to pre-cache for all link of all blogs */
+		/* when plugin is  network wide active, we need to precache for all link of all blogs */
 		if ( static::$network_activated ) {
 			/* list all blogs */
 			global $wpdb;

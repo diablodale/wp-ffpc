@@ -24,7 +24,7 @@ if (isset($argv[2])) {
 		fwrite(STDERR, 'wp-ffpc precache worker can not create logfile');
 		exit(1);
 	}
-	if (false === fwrite($logfile, "permalink\tgeneration time (s)\tsize ( kbyte )\n")) {
+	if (false === fwrite($logfile, "permalink\tgeneration time (s)\tsize (kbyte)\n")) {
 		@fclose($logfile);
 		fwrite(STDERR, 'wp-ffpc precache worker can not write header to logfile');
 		exit(1);
