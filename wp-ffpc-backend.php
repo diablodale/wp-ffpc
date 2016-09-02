@@ -30,6 +30,13 @@ abstract class WP_FFPC_Backend {
 
 	const host_separator  = ',';
 	const port_separator  = ':';
+	const LOG_INFO = 106;		// consts for alert mechanism; can't use LOG_*** constants because Windows PHP duplicates five of the values in PHP 5.5.12
+	const LOG_NOTICE = 105;
+	const LOG_WARNING = 104;
+	const LOG_ERR = 103;
+	const LOG_CRIT = 102;
+	const LOG_ALERT = 101;
+	const LOG_EMERG = 100;
 
 	protected $connection = NULL;
 	protected $alive = false;
@@ -211,7 +218,7 @@ abstract class WP_FFPC_Backend {
 
 		/* check result validity */
 		if ( $result === false || $result === null )
-			$this->log ( sprintf( __translate__( 'failed to set entry: %s', 'wp-ffpc'),  $key ), LOG_WARNING );
+			$this->log ( sprintf( __translate__( 'failed to set entry: %s', 'wp-ffpc'),  $key ), self::LOG_WARNING );
 
 		return $result;
 	}
@@ -240,7 +247,7 @@ abstract class WP_FFPC_Backend {
 
 		/* exit if no post_id is specified */
 		if ( empty ( $post_id ) && $force === false ) {
-			$this->log (  __translate__('not clearing unidentified post ', 'wp-ffpc'), LOG_WARNING );
+			$this->log (  __translate__('not clearing unidentified post ', 'wp-ffpc'), self::LOG_WARNING );
 			return false;
 		}
 
@@ -253,7 +260,7 @@ abstract class WP_FFPC_Backend {
 			$result = $this->_flush();
 
 			if ( $result === false )
-				$this->log (  __translate__('failed to empty cache', 'wp-ffpc'), LOG_WARNING );
+				$this->log (  __translate__('failed to empty cache', 'wp-ffpc'), self::LOG_WARNING );
 
 			return $result;
 		}
@@ -290,7 +297,7 @@ abstract class WP_FFPC_Backend {
 
 			/* no path, don't do anything */
 			if ( empty( $permalink ) && $permalink != false ) {
-				$this->log ( sprintf( __translate__( 'unable to determine path from Post Permalink, post ID: %s', 'wp-ffpc'),  $post_id ), LOG_WARNING );
+				$this->log ( sprintf( __translate__( 'unable to determine path from Post Permalink, post ID: %s', 'wp-ffpc'),  $post_id ), self::LOG_WARNING );
 				return false;
 			}
 
@@ -453,7 +460,7 @@ abstract class WP_FFPC_Backend {
 	 */
 	protected function is_alive() {
 		if ( ! $this->alive ) {
-			$this->log (  __translate__("backend is not active, exiting function ", 'wp-ffpc') . __FUNCTION__, LOG_WARNING );
+			$this->log (  __translate__("backend is not active, exiting function ", 'wp-ffpc') . __FUNCTION__, self::LOG_WARNING );
 			return false;
 		}
 
@@ -511,13 +518,21 @@ abstract class WP_FFPC_Backend {
 	 * @var mixed $message Message to log
 	 * @var int $log_level Log level
 	 */
-	protected function log ( $message, $level = LOG_NOTICE ) {
+	protected function log ( $message, $level = self::LOG_NOTICE ) {
 		if ( @is_array( $message ) || @is_object ( $message ) )
 			$message = json_encode($message);
 
+		// check for deprecated LOG constants; must use self::LOG_*** instead
+		// TODO remove this when devs consistently use new constants
+		if ($level < self::LOG_EMERG) {
+			$callstack = debug_backtrace(false);
+			error_log($callstack[1]['function'] . '() called WP_FFPC_Backend::log() with deprecated LOG_*** constant');
+			if (LOG_ERR === $level)
+				$level = self::LOG_ERR;
+		}
 
 		switch ( $level ) {
-			case LOG_ERR :
+			case self::LOG_ERR :
 				wp_die( '<h1>Error:</h1>' . '<p>' . $message . '</p>' );
 				exit;
 			default:

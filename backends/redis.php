@@ -7,13 +7,13 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 	protected function _init () {
 		/* Memcached class does not exist, Memcached extension is not available */
 		if (!class_exists('Redis')) {
-			$this->log (  __translate__('Redis extension missing, wp-ffpc will not be able to function correctly!', $this->plugin_constant ), LOG_WARNING );
+			$this->log (  __translate__('Redis extension missing, wp-ffpc will not be able to function correctly!', $this->plugin_constant ), self::LOG_WARNING );
 			return false;
 		}
 
 		/* check for existing server list, otherwise we cannot add backends */
 		if ( empty ( $this->options['servers'] ) && ! $this->alive ) {
-			$this->log (  __translate__("Redis servers list is empty, init failed", $this->plugin_constant ), LOG_WARNING );
+			$this->log (  __translate__("Redis servers list is empty, init failed", $this->plugin_constant ), self::LOG_WARNING );
 			return false;
 		}
 

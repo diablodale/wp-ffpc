@@ -79,7 +79,7 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 
 		foreach ( $keys as $key => $dummy ) {
 			if ( ! apc_delete ( $key ) ) {
-				$this->log ( sprintf( __translate__( 'Failed to delete APC entry: %s', 'wp-ffpc' ),  $key ), LOG_WARNING );
+				$this->log ( sprintf( __translate__( 'Failed to delete APC entry: %s', 'wp-ffpc' ),  $key ), self::LOG_WARNING );
 				//throw new Exception ( __translate__('Deleting APC entry failed with key ', $this->plugin_constant ) . $key );
 			}
 			else {

@@ -36,6 +36,13 @@ if (!class_exists('WP_FFPC_ABSTRACT')):
 abstract class WP_FFPC_ABSTRACT {
 
 	const CAPABILITY_NEEDED = 'manage_options';
+	const LOG_INFO = 106;		// consts for alert mechanism; can't use LOG_*** constants because Windows PHP duplicates five of the values in PHP 5.5.12
+	const LOG_NOTICE = 105;
+	const LOG_WARNING = 104;
+	const LOG_ERR = 103;
+	const LOG_CRIT = 102;
+	const LOG_ALERT = 101;
+	const LOG_EMERG = 100;
 
 	protected $plugin_constant;
 	protected $options = array();
@@ -230,13 +237,13 @@ abstract class WP_FFPC_ABSTRACT {
 		ob_end_flush();
 		global $wp_filesystem;
 		if ( !is_object($wp_filesystem) ) {
-			static::alert( __('Could not access the Wordpress Filesystem to configure WP-FFPC plugin'), LOG_WARNING );
+			static::alert( __('Could not access the Wordpress Filesystem to configure WP-FFPC plugin'), self::LOG_WARNING );
 			error_log( __('Could not access the Wordpress Filesystem to configure WP-FFPC plugin'));
 			return false;
 		}
 		if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
 			static::alert( __('Wordpress Filesystem error: ') . $wp_filesystem->errors->get_error_message() .
-				' (' . $wp_filesystem->errors->get_error_code() . ')', LOG_WARNING );
+				' (' . $wp_filesystem->errors->get_error_code() . ')', self::LOG_WARNING );
 			error_log( __('Wordpress Filesystem error: ') . $wp_filesystem->errors->get_error_message() .
 				' (' . $wp_filesystem->errors->get_error_code() . ')');
 			return false;
@@ -627,13 +634,13 @@ abstract class WP_FFPC_ABSTRACT {
 
 	/**
 	 */
-	static function debug( $message, $level = LOG_NOTICE ) {
+	static function debug( $message, $level = self::LOG_NOTICE ) {
 		if ( @is_array( $message ) || @is_object ( $message ) )
 			$message = json_encode($message);
 
 
 		switch ( $level ) {
-			case LOG_ERR :
+			case self::LOG_ERR :
 				wp_die( '<h1>Error:</h1>' . '<p>' . $message . '</p>' );
 				exit;
 			default:
@@ -653,9 +660,17 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param boolean $network_activated alert displayed for network admin only
 	 * 
 	 */
-	static public function alert ( $msg, $level=LOG_WARNING, $network_activated=NULL ) {
+	static public function alert ( $msg, $level=self::LOG_WARNING, $network_activated=NULL ) {
 		//if ( php_sapi_name() === "cli" ) return false;
 		if ( empty($msg)) return false;
+
+		// check for deprecated LOG constants; must use self::LOG_*** instead
+		// TODO remove this when devs consistently use new constants
+		if ($level < self::LOG_EMERG) {
+			$callstack = debug_backtrace(false);
+			error_log($callstack[1]['function'] . '() called WP_FFPC_ABSTRACT::alert() with deprecated LOG_*** constant');
+			$level = self::LOG_INFO;
+		}
 
 		// don't show notices to users that can't do anything about them
 		// without this logic, it is possible for non-admins (e.g. subscribers) to see notices
@@ -666,20 +681,20 @@ abstract class WP_FFPC_ABSTRACT {
 		// network_activated=true means the superadmin network admin pages
 		// network_activated=false means the rest of the admin pages (except for the single site user profile pages due to a WP bug)
 		if (NULL === $network_activated) $network_activated = static::$network_activated;
-		
+
 		switch ($level) {
-			case LOG_WARNING:
+			case self::LOG_WARNING:
 				//$css = "notice notice-warning";
 				//break;
-			case LOG_ERR:
+			case self::LOG_ERR:
 				$css = "error notice notice-error";
 				break;
-			case LOG_INFO:
-				$css = "updated notice notice-info";
-				break;
-			case LOG_NOTICE:
-			default:
+			case self::LOG_NOTICE:
 				$css = "updated notice notice-success";
+				break;
+			case self::LOG_INFO:
+			default:
+				$css = "updated notice notice-info";
 				break;
 		}
 
