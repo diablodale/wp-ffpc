@@ -7,13 +7,13 @@ class WP_FFPC_Backend_memcached extends WP_FFPC_Backend {
 	protected function _init () {
 		/* Memcached class does not exist, Memcached extension is not available */
 		if (!class_exists('Memcached')) {
-			$this->log (  __translate__(' Memcached extension missing, wp-ffpc will not be able to function correctly!', 'wp-ffpc' ), LOG_WARNING );
+			$this->log (  __translate__(' Memcached extension missing, wp-ffpc will not be able to function correctly!', 'wp-ffpc' ), self::LOG_WARNING );
 			return false;
 		}
 
 		/* check for existing server list, otherwise we cannot add backends */
 		if ( empty ( $this->options['servers'] ) && ! $this->alive ) {
-			$this->log (  __translate__("Memcached servers list is empty, init failed", 'wp-ffpc' ), LOG_WARNING );
+			$this->log (  __translate__("Memcached servers list is empty, init failed", 'wp-ffpc' ), self::LOG_WARNING );
 			return false;
 		}
 

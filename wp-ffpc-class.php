@@ -13,12 +13,8 @@ include_once ( dirname(__FILE__) .'/wp-ffpc-backend.php' );
  * @var string $acache_worker	advanced cache "worker" file, bundled with the plugin
  * @var string $acache	WordPress advanced-cache.php file location
  * @var string $nginx_sample	nginx sample config file, bundled with the plugin
- * @var string $acache_backend	backend driver file, bundled with the plugin
- * @var string $button_flush	flush button identifier
- * @var string $button_precache	precache button identifier
  * @var string $global_option	global options identifier
  * @var string $precache_logfile	Precache log file location
- * @var string $precache_phpfile	Precache PHP worker location
  * @var array $shell_possibilities	List of possible precache worker callers
  [TODO] finish list of vars
  */
@@ -26,22 +22,13 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	const host_separator  = ',';
 	const port_separator  = ':';
 	const donation_id_key = 'hosted_button_id=';
-	const global_config_var = '$wp_ffpc_config';
-	const key_save = 'saved';
-	const key_delete = 'deleted';
-	const key_flush = 'flushed';
-	const slug_flush = '&flushed=true';
-	const key_precache = 'precached';
-	const slug_precache = '&precached=true';
-	const key_precache_disabled = 'precache_disabled';
-	const slug_precache_disabled = '&precache_disabled=true';
-	const precache_log = 'wp-ffpc-precache-log';
-	const precache_timestamp = 'wp-ffpc-precache-timestamp';
-	const precache_php = 'wp-ffpc-precache.php';
+	const precache_log_option = 'wp-ffpc-precache-log';
+	const precache_timestamp_option = 'wp-ffpc-precache-timestamp';
+	const precache_worker_prefix = 'wp-ffpc-precache-';
 	const precache_id = 'wp-ffpc-precache-task';
-	private $precache_message = '';
+	const precache_phpfile = 'wp-ffpc-precache.php';
 	private $precache_logfile = '';
-	private $precache_phpfile = '';
+	private $precache_datafile = '';
 	private $global_option = '';
 	private $global_config_key = '';
 	private $global_config = array();
@@ -49,19 +36,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	private $acache_worker = '';
 	private $acache = '';
 	private $nginx_sample = '';
-	private $acache_backend = '';
-	private $button_flush;
-	private $button_precache;
 	private $select_cache_type = array ();
 	private $select_invalidation_method = array ();
 	private $select_schedules = array();
 	private $valid_cache_type = array ();
 	private $list_uri_vars = array();
 	private $shell_function = false;
-	private $shell_possibilities = array ();
 	private $backend = NULL;
 	private $scheduled = false;
-	private $errors = array();
 
 	/**
 	 *
@@ -69,7 +51,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	public function plugin_post_construct () {
 		static::debug ( __CLASS__, 'post_construct' );
 		$this->plugin_url = plugin_dir_url( __FILE__ );
-		$this->plugin_dir = plugin_dir_path( __FILE__ );
+		$this->plugin_dir = untrailingslashit( dirname( __FILE__ ) ) . DIRECTORY_SEPARATOR;
 
 		$this->admin_css_handle = $this->plugin_constant . '-admin-css';
 		$this->admin_css_url = $this->plugin_url . 'wp-admin.css';
@@ -83,31 +65,26 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/* advanced cache "worker" file */
 		$this->acache_worker = $this->plugin_dir . $this->plugin_constant . '-acache.php';
 		/* WordPress advanced-cache.php file location */
-		$this->acache = WP_CONTENT_DIR . '/advanced-cache.php';
+		$this->acache = untrailingslashit(WP_CONTENT_DIR) . DIRECTORY_SEPARATOR . 'advanced-cache.php';
 		/* nginx sample config file */
 		$this->nginx_sample = $this->plugin_dir . $this->plugin_constant . '-nginx-sample.conf';
-		/* backend driver file */
-		$this->acache_backend = $this->plugin_dir . $this->plugin_constant . '-engine.php';
-		/* flush button identifier */
-		$this->button_flush = $this->plugin_constant . '-flush';
-		/* precache button identifier */
-		$this->button_precache = $this->plugin_constant . '-precache';
 		/* global options identifier */
 		$this->global_option = $this->plugin_constant . '-global';
-		/* precache log */
-		$this->precache_logfile = sys_get_temp_dir() . '/' . self::precache_log;
-		/* this is the precacher php worker file */
-		$this->precache_phpfile = sys_get_temp_dir() . '/' . self::precache_php;
-		/* search for a system function */
-		$this->shell_possibilities = array ( 'shell_exec', 'exec', 'system', 'passthru' );
-		/* get disabled functions list */
-		$disabled_functions = array_map('trim', explode(',', ini_get('disable_functions') ) );
 
-		foreach ( $this->shell_possibilities as $possible ) {
-			if ( function_exists ($possible) && ! ( ini_get('safe_mode') || in_array( $possible, $disabled_functions ) ) ) {
-				/* set shell function */
-				$this->shell_function = $possible;
-				break;
+		// verify system functions; *nix needs exec(), Windows needs exec() and popen()
+		if (false == static::ini_get_bool('safe_mode')) {
+			// get disabled functions list
+			$disabled_functions = array_map('trim', explode(',', ini_get('disable_functions')));
+			if (function_exists('exec') && !in_array('exec', $disabled_functions)) {
+				if (static::isWindows()) {
+					if ( (function_exists('popen') && !in_array('popen', $disabled_functions)) &&
+						 (function_exists('pclose') && !in_array('pclose', $disabled_functions)) ) {
+						$this->shell_function = true;
+					}
+				}
+				else {
+					$this->shell_function = true;
+				}	
 			}
 		}
 
@@ -115,15 +92,15 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$_SERVER['HTTP_HOST'] = '127.0.0.1';
 
 		/* set global config key; here, because it's needed for migration */
-		if ( $this->network ) {
+		if ( static::$network_activated ) {
 			$this->global_config_key = 'network';
 		}
 		else {
+			// BUGBUG get_option should likely be get_site_option for the case -> multisite without network activate
+			// BUGBUG this only supports domain-style multisite; it doesn't support path-style multisite
 			$sitedomain = parse_url( get_option('siteurl') , PHP_URL_HOST);
-			if ( $_SERVER['HTTP_HOST'] != $sitedomain ) {
-				$this->errors['domain_mismatch'] = sprintf( __("Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.", 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] );
-			}
-
+			if ( $_SERVER['HTTP_HOST'] != $sitedomain )
+				static::alert( sprintf( __("Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.", 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] ), self::LOG_WARNING);
 			$this->global_config_key = $_SERVER['HTTP_HOST'];
 		}
 
@@ -146,7 +123,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		/* invalidation method possible values array */
 		$this->select_invalidation_method = array (
-			0 => __( 'flush cache' , 'wp-ffpc'),
+			0 => __( 'empty cache' , 'wp-ffpc'),
 			1 => __( 'only modified post' , 'wp-ffpc'),
 			2 => __( 'modified post and all taxonomies' , 'wp-ffpc'),
 			3 => __( 'modified post and posts index page' , 'wp-ffpc'),
@@ -211,58 +188,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		if ( WP_CACHE )
 			add_filter('redirect_canonical', 'wp_ffpc_redirect_callback', 10, 2);
 
-		/* add precache coldrun action */
+		/* add precache coldrun action for scheduled runs */
+		// TODO try to make precache operations as static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
-
-		/* link on to settings for plugins page */
-		$settings_link = ' &raquo; <a href="' . $this->settings_link . '">' . __( 'WP-FFPC Settings', 'wp-ffpc') . '</a>';
-
-		/* check & collect errors */
-		/* look for WP_CACHE */
-		if ( ! WP_CACHE )
-			$this->errors['no_wp_cache'] = __("WP_CACHE is disabled. Without that, cache plugins, like this, will not work. Please add `define ( 'WP_CACHE', true );` to the beginning of wp-config.php.", 'wp-ffpc');
-
-		/* look for global settings array */
-		if ( ! $this->global_saved )
-			$this->errors['no_global_saved'] = sprintf( __('This site was reached as %s ( according to PHP HTTP_HOST ) and there are no settings present for this domain in the WP-FFPC configuration yet. Please save the %s for the domain or fix the webserver configuration!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link);
-
-		/* look for writable acache file */
-		if ( file_exists ( $this->acache ) && ! is_writable ( $this->acache ) )
-			$this->errors['no_acache_write'] = sprintf(__('Advanced cache file (%s) is not writeable!<br />Please change the permissions on the file.', 'wp-ffpc'), $this->acache);
-
-		/* look for acache file */
-		if ( ! file_exists ( $this->acache ) )
-			$this->errors['no_acache_saved'] = sprintf (__('Advanced cache file is yet to be generated, please save %s', 'wp-ffpc'), $settings_link );
-
-		/* look for extensions that should be available */
-		foreach ( $this->valid_cache_type as $backend => $status ) {
-			if ( $this->options['cache_type'] == $backend && ! $status ) {
-				$this->errors['no_backend'] = sprintf ( __('%s cache backend activated but no PHP %s extension was found.<br />Please either use different backend or activate the module!', 'wp-ffpc'), $backend, $backend );
-			}
-		}
-
-		/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
-		if ( extension_loaded ( 'memcache' )  ) {
-			$memcache_settings = ini_get_all( 'memcache' );
-			if ( !empty ( $memcache_settings ) && $this->options['cache_type'] == 'memcache' && isset($memcache_settings['memcache.protocol']) )
-			{
-				$memcache_protocol = strtolower($memcache_settings['memcache.protocol']['local_value']);
-				if ( $memcache_protocol == 'binary' ) {
-					$this->errors['memcached_binary'] = __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc');
-				}
-			}
-		}
-
-		$filtered_errors = apply_filters('wp_ffpc_post_init_errors_array', $this->errors);
-		if ($filtered_errors) {
-			if ( php_sapi_name() != "cli" ) {
-				foreach ( $this->errors as $e => $msg ) {
-					static::alert ( $msg, LOG_WARNING, $this->network );
-				}
-			}
-		}
-
-		add_filter('contextual_help', array( &$this, 'plugin_admin_nginx_help' ), 10, 2);
 	}
 
 	/**
@@ -275,7 +203,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * deactivation hook function, to be extended
 	 */
+	// BUGBUG this and many other parts of this plugin's code do not appear to handle multisite well; e.g., there is no code which
+	// on deactivate or uninstall loops through the sites in the multisite and deletes the site-specific (not network activated)
+	// plugin options in all of them. See http://stackoverflow.com/questions/13960514/how-to-adapt-my-plugin-to-multisite/
 	public function plugin_deactivate () {
+		// if there is a saved config, we need the filesystem api to remove it later in deploy_advanced_cache()
+		if ( array_key_exists('wp_ffpc_config', $GLOBALS) ) {
+			// make a new nonce because the current nonce was consumed earlier in the WP core code for deactivate
+			$url = add_query_arg( '_wpnonce', wp_create_nonce( 'deactivate-plugin_' . $this->plugin_file ), remove_query_arg( '_wpnonce' ));
+			if ( !static::plugin_setup_fileapi( $url ) ) return;
+		}
+
 		/* remove current site config from global config */
 		$this->update_global_config( true );
 	}
@@ -284,12 +222,37 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * uninstall hook function, to be extended
 	 */
 	public function plugin_uninstall( $delete_options = true ) {
-		/* delete advanced-cache.php file */
-		unlink ( $this->acache );
-
 		/* delete site settings */
-		if ( $delete_options ) {
+		// BUGBUG this does a deploy of advanced-cache.php in nested function calls; code should be refactors to prevent this
+		// a workaround is to delete advanced-cache.php file after as the code does below
+		// BUGBUG this and many other parts of this plugin's code do not appear to handle multisite well; e.g., there is no code which
+		// on deactivate or uninstall loops through the sites in the multisite and deletes the site-specific (not network activated)
+		// plugin options in all of them. See http://stackoverflow.com/questions/13960514/how-to-adapt-my-plugin-to-multisite/
+		if ( $delete_options )
 			$this->plugin_options_delete ();
+
+		// Wordpress has already setup a working filesystem object earlier in the core codepath
+		// before this function is called; therefore only the most basic error handling is used here
+		global $wp_filesystem;
+		if ( is_object($wp_filesystem) ) {
+			// delete advanced-cache.php file
+			$delete_result = $wp_filesystem->delete( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php', false, 'f' );
+			if (true === $delete_result)
+				@opcache_invalidate( trailingslashit(WP_CONTENT_DIR) . 'advanced-cache.php' );
+			else {
+				if ( is_wp_error($wp_filesystem->errors) && $wp_filesystem->errors->get_error_code() ) {
+					static::alert( 'Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+						'(' . $wp_filesystem->errors->get_error_code() . ')', self::LOG_WARNING );
+					error_log('Filesystem error: ' . $wp_filesystem->errors->get_error_message() .
+						'(' . $wp_filesystem->errors->get_error_code() . ')');
+					return false;
+				}
+				static::alert( sprintf(__('Advanced cache file (%s) could not be deleted.<br />Please manually delete this file', 'wp-ffpc'), $this->acache), self::LOG_WARNING );
+			}
+		}
+		else {
+			static::alert( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache), self::LOG_WARNING );
+			error_log( sprintf(__('Failure in core Wordpress plugin uninstall code.<br />Please manually delete %s', 'wp-ffpc'), $this->acache));
 		}
 	}
 
@@ -301,50 +264,95 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$this->update_global_config();
 			$this->plugin_options_save();
 			$this->deploy_advanced_cache();
-			static::alert ( __('WP-FFPC settings were upgraded; please double check if everything is still working correctly.', 'wp-ffpc'), LOG_NOTICE );
+			static::alert ( __('WP-FFPC settings were upgraded; please double check if everything is still working correctly.', 'wp-ffpc'), self::LOG_NOTICE );
 		}
 	}
 
 	/**
 	 * extending admin init
-	 *
 	 */
 	public function plugin_extend_admin_init () {
-		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_flush ] ) && check_admin_referer ( 'wp-ffpc') ) {
-			/* remove precache log entry */
-			static::_delete_option( self::precache_log  );
-			/* remove precache timestamp entry */
-			static::_delete_option( self::precache_timestamp );
+		/* site and blog id token */
+		if (is_multisite())
+			$siteblogid = get_current_site()->id . '-' . get_current_blog_id();
+		else
+			$siteblogid = '0-0';
+		/* precache worker temporary directory */
+		$this->precache_worker_dir = untrailingslashit(get_temp_dir()) . DIRECTORY_SEPARATOR . $this->plugin_constant;
+		/* precache log */
+		$this->precache_logfile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.log';
+		/* precache data file containing urls to precache */
+		$this->precache_datafile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.data';
 
-			/* remove precache logfile */
-			if ( @file_exists ( $this->precache_logfile ) ) {
-				unlink ( $this->precache_logfile );
-			}
+		// hook in publisher of admin notices that will appear on all admin pages; enables late logic/validation yet can still publish admin notices
+		add_action( 'admin_head', array( &$this, 'plugin_admin_notice_publisher_all_pages' ) );
+		/* hook in plugin settings page specific actions and filters */
+		if ( $this->settings_page_hook_suffix ) {
+			add_filter( 'contextual_help', array( &$this, 'plugin_admin_help' ), 10, 3 );	// legacy method WP 3.0+
+			add_action( 'load-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_load_dash' ) );
+			add_action( 'admin_head-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_notice_publisher_settings_page' ) );
+		}
+	}
 
-			/* remove precache PHP worker */
-			if ( @file_exists ( $this->precache_phpfile ) ) {
-				unlink ( $this->precache_phpfile );
-			}
+	public function plugin_admin_notice_publisher_all_pages() {
+		/* validation and checks */
+		if ( !WP_CACHE )
+			static::alert( __('WP_CACHE is disabled therefore cache plugins will not work. Please add <code>define(\'WP_CACHE\', true);</code> to the beginning of wp-config.php.', 'wp-ffpc'), self::LOG_WARNING);
 
-			/* flush backend */
-			$this->backend->clear( false, true );
-			$this->status = 3;
-			header( "Location: ". $this->settings_link . self::slug_flush );
+		/* look for global settings array and acache file*/
+		// BUGBUG lack of error handling/returns in saving code can make $this->global_saved errant
+		$settings_link = '<a href="' . $this->settings_link . '">' . __( 'WP-FFPC Settings', 'wp-ffpc') . '</a>';
+		if ( ( !$this->global_saved ) || ( !array_key_exists('wp_ffpc_config', $GLOBALS) ) ) {
+			if ( !array_key_exists('wp_ffpc_config', $GLOBALS) )
+				$not_there[] = __('cache config file', 'wp-ffpc');
+			if ( !$this->global_saved )
+				$not_there[] = __('Wordpress database', 'wp-ffpc');
+			static::alert( sprintf( __('WP-FFPC configuration settings for %s (HTTP_HOST) are not saved in the ', 'wp-ffpc') .
+				implode( __(' and ', 'wp-ffpc'), $not_there) .
+				__('. Please configure and save the %s for this site!', 'wp-ffpc'), $_SERVER['HTTP_HOST'], $settings_link), self::LOG_WARNING);
 		}
 
-		/* save parameter updates, if there are any */
-		if ( isset( $_POST[ $this->button_precache ] ) && check_admin_referer ( 'wp-ffpc') ) {
-			/* is no shell function is possible, fail */
-			if ( $this->shell_function == false ) {
-				$this->status = 5;
-				header( "Location: ". $this->settings_link . self::slug_precache_disabled );
+		if ( isset($GLOBALS['wp_ffpc_config']) ) {
+			global $wp_ffpc_config;
+			/* look for extensions that should be available */
+			if (false === $this->valid_cache_type[$wp_ffpc_config['cache_type']])
+				static::alert( sprintf ( __('%s cache backend selected but no PHP %s extension was found. Please activate the PHP %s extension or choose a different backend in %s.', 'wp-ffpc'), $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $settings_link ), self::LOG_WARNING);
+			else if ( ( 'memcache' === $wp_ffpc_config['cache_type'] ) && ( true === $this->valid_cache_type['memcache'] ) ) {
+				/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
+				$memcache_settings = ini_get_all( 'memcache' );
+				if ( isset( $memcache_settings['memcache.protocol'] ) ) {
+					$memcache_protocol = strtolower($memcache_settings['memcache.protocol']['local_value']);
+					if ( $memcache_protocol == 'binary' )
+						static::alert( __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc'), self::LOG_WARNING);
+				}
 			}
-			/* otherwise start full precache */
-			else {
-				$this->precache_message = $this->precache_coldrun();
-				$this->status = 4;
-				header( "Location: ". $this->settings_link . self::slug_precache );
+		}
+	}
+
+	public function plugin_admin_notice_publisher_settings_page() {
+		if ( isset($GLOBALS['wp_ffpc_config']) ) {
+			global $wp_ffpc_config;
+			/* display backend status if memcache-like extension is running */
+			if ( strstr( $wp_ffpc_config['cache_type'], 'memcache') ) {
+				$notice = '<span class="memcache-stat-title">' . $wp_ffpc_config['cache_type'] . __(' backend status') . '</span><br/>';
+				/* we need to go through all servers */
+				$servers = $this->backend->status();
+				if ( is_array( $servers ) && !empty ( $servers ) ) {
+					error_log(__CLASS__ . ': ' .json_encode($servers));
+					foreach ( $servers as $server_string => $server_status ) {
+						$notice .= $server_string . " => ";
+						if ( $server_status == 0 )
+							$notice .= __( '<span class="error-msg">down</span><br />', 'wp-ffpc');
+						elseif ( ( $this->options['cache_type'] == 'memcache' && $server_status > 0 )  || $server_status == 1 )
+							$notice .= __( '<span class="ok-msg">up & running</span><br />', 'wp-ffpc');
+						else
+							$notice .= __( '<span class="error-msg">unknown, please try re-saving settings!</span><br />', 'wp-ffpc');
+					}
+				}
+				else {
+					$notice .= __('not yet available');
+				}
+				static::alert($notice, self::LOG_INFO);
 			}
 		}
 	}
@@ -352,10 +360,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * admin help panel
 	 */
-	public function plugin_admin_help($contextual_help, $screen_id ) {
-
+	public function plugin_admin_help( $contextual_help, $screen_id, $screen ) {
 		/* add our page only if the screenid is correct */
-		if ( strpos( $screen_id, $this->plugin_settings_page ) ) {
+		if ( $screen_id == $this->settings_page_hook_suffix ) {
 			$contextual_help = __('<p>Please visit <a href="http://wordpress.org/support/plugin/wp-ffpc">the official support forum of the plugin</a> for help.</p>', 'wp-ffpc');
 
 			/* [TODO] give detailed information on errors & troubleshooting
@@ -367,24 +374,71 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					</ol>' )
 			) );
 			*/
-
 		}
-
 		return $contextual_help;
 	}
 
 	/**
-	 * admin help panel
+	 * hook handler for plugin's setting page via load-($hook_suffix)
 	 */
-	public function plugin_admin_nginx_help($contextual_help, $screen_id ) {
+	public function plugin_admin_load_dash() {
+		// security check
+		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) wp_die( );
 
-		/* add our page only if the screenid is correct */
-		if ( strpos( $screen_id, $this->plugin_settings_page ) ) {
+		/* save parameter updates, if there are any */
+		if ( isset( $_POST[ $this->button_save ] ) ) {
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
+			if ( !check_admin_referer( 'wp-ffpc-save', '_wpnonce-s' ) ) return;
+			$this->plugin_options_save();	// BUGBUG the return codes from nested functions in plugin_options_save() are not caught, therefore errors in saving are also not caught 
+			static::alert( __( 'Settings saved to database.' , 'wp-ffpc') , self::LOG_NOTICE );
+		}
+		/* delete parameters if requested */
+		else if ( isset( $_POST[ $this->button_delete ] ) ) {
+			if ( !$this->plugin_setup_fileapi( $this->settings_link ) ) return;
+			if ( !check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' ) ) return;
+			$this->plugin_options_delete();	// BUGBUG the return codes from nested functions in plugin_options_delete() are not caught, therefore errors in deleting are also not caught 
+			static::alert( __( 'Plugin options deleted from database.' , 'wp-ffpc') , self::LOG_NOTICE );
+		}
+		/* handle cache flush */
+		else if ( isset( $_POST[$this->button_flush] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
+			/* remove precache log entry */
+			static::_delete_option( self::precache_log_option );
+			/* remove precache timestamp entry */
+			static::_delete_option( self::precache_timestamp_option );
+
+			/* stop any precache currently running for the current siteid-blogid*/
+			$precache_stopped = $this->precache_stop();
+
+			/* flush backend */
+			// TODO dangerous in multisite; the code allows subsite admins to clear entire cache systems
+			// which affects other subsites and applications. When multisite, code needs to isolate any cache
+			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
+			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
+			$this->backend->clear( false, true );
+			if ($precache_stopped)
+				static::alert( __( 'Cache emptied.' , 'wp-ffpc') , self::LOG_NOTICE );
+			else
+				static::alert( __( 'Cache emptied yet unable to stop the precache crawl in progress.' , 'wp-ffpc') , self::LOG_WARNING );
+		}
+		/* handle precache requests */
+		else if ( isset( $_POST[$this->button_precache] ) ) {
+			check_admin_referer( 'wp-ffpc-admin', '_wpnonce-a' );
+			$precache_result = $this->precache_coldrun();
+			if ( true === $precache_result)
+				static::alert( __( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') , self::LOG_NOTICE );
+			else if ( false === $precache_result)
+				static::alert( __( 'Precache process failed to start for an unexpected reason' , 'wp-ffpc') , self::LOG_WARNING );
+			else
+				static::alert( $precache_result, self::LOG_WARNING );
+		}
+
+		// add custom help tab for nginx setup
+		if ( method_exists( 'WP_Screen', 'add_help_tab' ) ) {
 			$content = __('<h3>Sample config for nginx to utilize the data entries</h3>', 'wp-ffpc');
 			$content .= __('<div class="update-nag">This is not meant to be a copy-paste configuration; you most probably have to tailor it to your needs.</div>', 'wp-ffpc');
 			$content .= __('<div class="update-nag"><strong>In case you are about to use nginx to fetch memcached entries directly and to use SHA1 hash keys, you will need an nginx version compiled with <a href="http://wiki.nginx.org/HttpSetMiscModule">HttpSetMiscModule</a>. Otherwise set_sha1 function is not available in nginx.</strong></div>', 'wp-ffpc');
 			$content .= '<code><pre>' . $this->nginx_example() . '</pre></code>';
-
 			get_current_screen()->add_help_tab( array(
 					'id'		=> 'wp-ffpc-nginx-help',
 					'title'		=> __( 'nginx example', 'wp-ffpc' ),
@@ -392,19 +446,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			) );
 		}
 
-		return $contextual_help;
+		// enqueue scripts
+		add_action( 'admin_enqueue_scripts', array(&$this,'enqueue_admin_css_js'));
 	}
 
 	/**
 	 * admin panel, the admin page displayed for plugin settings
 	 */
 	public function plugin_admin_panel() {
-		/**
-		 * security, if somehow we're running without WordPress security functions
-		 */
-		if( ! function_exists( 'current_user_can' ) || ! current_user_can( 'manage_options' ) ){
-			die( );
-		}
 		?>
 
 		<div class="wrap">
@@ -422,76 +471,19 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		$this->plugin_donation_form();
 
 		/**
-		 * if options were saved, display saved message
-		 */
-		if (isset($_GET[ self::key_save ]) && $_GET[ self::key_save ]=='true' || $this->status == 1) { ?>
-			<div class='updated settings-error'><p><strong><?php _e( 'Settings saved.' , 'wp-ffpc') ?></strong></p></div>
-		<?php }
-
-		/**
-		 * if options were delete, display delete message
-		 */
-		if (isset($_GET[ self::key_delete ]) && $_GET[ self::key_delete ]=='true' || $this->status == 2) { ?>
-			<div class='error'><p><strong><?php _e( 'Plugin options deleted.' , 'wp-ffpc') ?></strong></p></div>
-		<?php }
-
-		/**
-		 * if options were saved
-		 */
-		if (isset($_GET[ self::key_flush ]) && $_GET[ self::key_flush ]=='true' || $this->status == 3) { ?>
-			<div class='updated settings-error'><p><strong><?php _e( "Cache flushed." , 'wp-ffpc'); ?></strong></p></div>
-		<?php }
-
-		/**
-		 * if options were saved, display saved message
-		 */
-		if ( ( isset($_GET[ self::key_precache ]) && $_GET[ self::key_precache ]=='true' ) || $this->status == 4) { ?>
-		<div class='updated settings-error'><p><strong><?php _e( 'Precache process was started, it is now running in the background, please be patient, it may take a very long time to finish.' , 'wp-ffpc') ?></strong></p></div>
-		<?php }
-
-		/**
 		 * the admin panel itself
 		 */
 		?>
 
 		<h2><?php echo $this->plugin_name ; _e( ' settings', 'wp-ffpc') ; ?></h2>
-
-		<div class="updated">
-			<p><strong><?php _e ( 'Driver: ' , 'wp-ffpc'); echo $this->options['cache_type']; ?></strong></p>
-			<?php
-			/* only display backend status if memcache-like extension is running */
-			if ( strstr ( $this->options['cache_type'], 'memcache') ) {
-				?><p><?php
-				_e( '<strong>Backend status:</strong><br />', 'wp-ffpc');
-
-				/* we need to go through all servers */
-				$servers = $this->backend->status();
-				error_log(__CLASS__ . ':' .json_encode($servers));
-				if ( is_array( $servers ) && !empty ( $servers ) ) {
-					foreach ( $servers as $server_string => $status ) {
-						echo $server_string ." => ";
-
-						if ( $status == 0 )
-							_e ( '<span class="error-msg">down</span><br />', 'wp-ffpc');
-						elseif ( ( $this->options['cache_type'] == 'memcache' && $status > 0 )  || $status == 1 )
-							_e ( '<span class="ok-msg">up & running</span><br />', 'wp-ffpc');
-						else
-							_e ( '<span class="error-msg">unknown, please try re-saving settings!</span><br />', 'wp-ffpc');
-					}
-				}
-
-				?></p><?php
-			} ?>
-		</div>
 		<form autocomplete="off" method="post" action="#" id="<?php echo $this->plugin_constant ?>-settings" class="plugin-admin">
 
-			<?php wp_nonce_field( 'wp-ffpc'); ?>
+			<?php wp_nonce_field( 'wp-ffpc-save', '_wpnonce-s'); ?>
 
 			<?php $switcher_tabs = $this->plugin_admin_panel_get_tabs(); ?>
 			<ul class="tabs">
-				<?php foreach($switcher_tabs AS $tab_section => $tab_label): ?>
-				<li><a href="#<?= $this->plugin_constant ?>-<?= $tab_section ?>" class="wp-switch-editor"><?= $tab_label ?></a></li>
-				<?php endforeach; ?>
+					<?php foreach($switcher_tabs AS $tab_section => $tab_label)
+					echo '<li><a href="#' . $this->plugin_constant . '-' . $tab_section . '" class="wp-switch-editor">' . $tab_label . '</a></li>'; ?>
 			</ul>
 
 			<fieldset id="<?php echo $this->plugin_constant ?>-type">
@@ -805,8 +797,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			</dl>
 			</fieldset>
 
-			<fieldset id="<?php echo $this->plugin_constant ?>-precache">
-			<legend><?php _e('Precache settings & log from previous pre-cache generation', 'wp-ffpc'); ?></legend>
+			<fieldset id="<?php echo $this->plugin_constant ?>-precachelog">
+			<legend><?php _e('Precache settings & log from previous precache generation', 'wp-ffpc'); ?></legend>
 
 				<dt>
 					<label for="precache_schedule"><?php _e('Precache schedule', 'wp-ffpc'); ?></label>
@@ -820,8 +812,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 				<?php
 
-				$gentime = static::_get_option( self::precache_timestamp, $this->network );
-				$log = static::_get_option( self::precache_log, $this->network );
+				$gentime = static::_get_option( self::precache_timestamp_option, static::$network_activated );
+				$log = static::_get_option( self::precache_log_option, static::$network_activated );
 
 				if ( @file_exists ( $this->precache_logfile ) ) {
 					$logtime = filemtime ( $this->precache_logfile );
@@ -829,8 +821,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					/* update precache log in DB if needed */
 					if ( $logtime > $gentime ) {
 						$log = file ( $this->precache_logfile );
-						static::_update_option( self::precache_log , $log, $this->network );
-						static::_update_option( self::precache_timestamp , $logtime, $this->network );
+						static::_update_option( self::precache_log_option, $log, static::$network_activated );
+						static::_update_option( self::precache_timestamp_option, $logtime, static::$network_activated );
 					}
 
 				}
@@ -838,11 +830,13 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				if ( empty ( $log ) ) {
 					_e('No precache log was found!', 'wp-ffpc');
 				}
-				else { ?>
-					<p><strong><?php _e( 'Time of run: ') ?><?php echo date('r', $gentime ); ?></strong></p>
-					<div  style="overflow: auto; max-height: 20em;"><table style="width:100%; border: 1px solid #ccc;">
+				else {
+					// TODO this log viewing UI is not usable for large sites with large log filesize
+					// a more scalable UI mechanism needs to be written
+					?><p><strong><?php _e( 'Time of run: ') ?><?php echo date('r', $gentime ); ?></strong></p>
+					<div style="overflow: auto; max-height: 20em;"><table style="width:100%; border: 1px solid #ccc;">
 						<thead><tr>
-								<?php $head = explode( "	", array_shift( $log ));
+								<?php $head = explode( "\t", array_shift( $log ));
 								foreach ( $head as $column ) { ?>
 									<th><?php echo $column; ?></th>
 								<?php } ?>
@@ -850,7 +844,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 						<?php
 						foreach ( $log as $line ) { ?>
 							<tr>
-								<?php $line = explode ( "	", $line );
+								<?php $line = explode( "\t", $line );
 								foreach ( $line as $column ) { ?>
 									<td><?php echo $column; ?></td>
 								<?php } ?>
@@ -870,7 +864,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		<form method="post" action="#" id="<?php echo $this->plugin_constant ?>-commands" class="plugin-admin" style="padding-top:2em;">
 
-			<?php wp_nonce_field( 'wp-ffpc'); ?>
+			<?php wp_nonce_field( 'wp-ffpc-admin', '_wpnonce-a' ); ?>
 
 			<ul class="tabs">
 				<li><a href="#<?php echo $this->plugin_constant ?>-precache" class="wp-switch-editor"><?php _e( 'Precache', 'wp-ffpc'); ?></a></li>
@@ -881,24 +875,22 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<fieldset id="<?php echo $this->plugin_constant ?>-precache">
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
-				<dt>
-					<?php if ( ( isset( $_GET[ self::key_precache_disabled ] ) && $_GET[ self::key_precache_disabled ] =='true' ) || $this->status == 5 || $this->shell_function == false ) { ?>
-						<strong><?php _e( "Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it's done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you whish to use precaching: " , 'wp-ffpc') ?><?php echo join( ',' , $this->shell_possibilities ); ?></strong>
-					<?php }
-					else { ?>
-						<input class="button-secondary" type="submit" name="<?php echo $this->button_precache ?>" id="<?php echo $this->button_precache ?>" value="<?php _e('Pre-cache', 'wp-ffpc') ?>" />
-					<?php } ?>
-				</dt>
-				<dd>
-					<span class="description"><?php _e('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to pre-cache.', 'wp-ffpc'); ?></span>
-				</dd>
+				<?php if ( $this->shell_function ) {
+					echo '<dt><input class="wp-ffpc-button" type="submit" name="' . $this->button_precache . '" id="' . $this->button_precache . '" value="' . __('Precache', 'wp-ffpc') . '" /></dt>';
+					echo '<dd><span class="description">' . __('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to precache.', 'wp-ffpc') . '</span></dd>'; 
+				}
+				else
+				{
+					_e( '<dt>Precache functionality is disabled due to unavailable system call functions. Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please disable <code>safe_mode</code> and enable the following functions if you want to use precaching. ' , 'wp-ffpc');
+					_e( '<br/>Linux, BSD, or *nix needs <code>exec()</code><br/>Windows needs <code>exec(), popen(), pclose()</code></dt>' , 'wp-ffpc');
+				} ?>
 			</dl>
 			</fieldset>
 			<fieldset id="<?php echo $this->plugin_constant ?>-flush">
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<input class="button-warning" type="submit" name="<?php echo $this->button_flush ?>" id="<?php echo $this->button_flush ?>" value="<?php _e('Clear cache', 'wp-ffpc') ?>" />
+					<input class="wp-ffpc-button wp-ffpc-button-warning" type="submit" name="<?php echo $this->button_flush ?>" id="<?php echo $this->button_flush ?>" value="<?php _e('Empty cache', 'wp-ffpc') ?>" />
 				</dt>
 				<dd>
 					<span class="description"><?php _e ( "Clear all entries in the storage, including the ones that were set by other processes.", 'wp-ffpc'); ?> </span>
@@ -909,7 +901,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<input class="button-warning" type="submit" name="<?php echo $this->button_delete ?>" id="<?php echo $this->button_delete ?>" value="<?php _e('Reset options', 'wp-ffpc') ?>" />
+					<input class="wp-ffpc-button wp-ffpc-button-warning" type="submit" name="<?php echo $this->button_delete ?>" id="<?php echo $this->button_delete ?>" value="<?php _e('Reset settings', 'wp-ffpc') ?>" />
 				</dt>
 				<dd>
 					<span class="description"><?php _e ( "Reset settings to defaults.", 'wp-ffpc'); ?> </span>
@@ -927,7 +919,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			'debug' => __( 'Debug & in-depth', 'wp-ffpc'),
 			'exceptions' => __( 'Cache exceptions', 'wp-ffpc'),
 			'servers' => __( 'Backend settings', 'wp-ffpc'),
-			'precache' => __( 'Precache & precache log', 'wp-ffpc')
+			'precachelog' => __( 'Precache & precache log', 'wp-ffpc')
 		);
 
 		return apply_filters('wp_ffpc_admin_panel_tabs', $default_tabs);
@@ -972,14 +964,15 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/*if ( strstr( $this->options['nocache_url']), '^wp-'  )wp_login_url()
 		$this->options['nocache_url'] = */
 
-
 		/* read the global options, network compatibility */
 		$this->global_config = get_site_option( $this->global_option );
 
-		/* check if current site present in global config */
-		if ( !empty ( $this->global_config[ $this->global_config_key ] ) )
-			$this->global_saved = true;
+		/* check if current site present in global config
+		   this is used in plugin_extend_admin_init() to know if options for this
+		   site have been saved to db; in contrast to default options having been loaded below */
+		$this->global_saved = !empty( $this->global_config[ $this->global_config_key ] );
 
+		// store (potentially default) options to in-memory copy of global config
 		$this->global_config[ $this->global_config_key ] = $options;
 	}
 
@@ -987,7 +980,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * options delete hook; needs to be implemented
 	 */
 	public function plugin_extend_options_delete(  ) {
-		delete_site_option ( $this->global_option );
+		$this->update_global_config( true );
 	}
 
 	/**
@@ -997,18 +990,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	public function plugin_options_migrate( &$options ) {
 
 		if ( version_compare ( $options['version'] , $this->plugin_version, '<' ) ) {
-			/* cleanup possible leftover files from previous versions */
-			$check = array ( 'advanced-cache.php', 'nginx-sample.conf', 'wp-ffpc.admin.css', 'wp-ffpc-common.php' );
-			foreach ( $check as $fname ) {
-				$fname = $this->plugin_dir . $fname;
-				if ( file_exists ( $fname ) )
-					unlink ( $fname );
-			}
-
 			/* look for previous config leftovers */
 			$try = get_site_option( 'wp-ffpc');
 			/* network option key changed, remove & migrate the leftovers if there's any */
-			if ( !empty ( $try ) && $this->network ) {
+			if ( !empty ( $try ) && static::$network_activated ) {
 				/* clean it up, we don't use it anymore */
 				delete_site_option ( 'wp-ffpc');
 
@@ -1042,28 +1027,52 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 *
 	 */
 	private function deploy_advanced_cache( ) {
+		if (WP_DEBUG) static::alert('deploy_advanced_cache()', self::LOG_INFO);
+		global $wp_filesystem;
+		if ( !is_object($wp_filesystem) ) return false;
+		
+		/* add the required includes and generate the needed code */
+		/* if no active site left no need for advanced cache :( */
+		if ( empty ( $this->global_config ) ) {
+			$string[] = "";
+		}
+		else {
+			$string[] = "<?php";
+			$string[] = '$wp_ffpc_config = ' . var_export ( $this->global_config, true ) . ';' ;
+			$string[] = "include_once ('" . $this->acache_worker . "');";
+		}
 
-		if (!touch($this->acache)) {
+		// touch() and is_writable() are both not reliable/implemented in the WP Filesystem API
+		// therefore must attempt write of file and then check for error
+		$put_acache_success = $wp_filesystem->put_contents( trailingslashit($wp_filesystem->wp_content_dir()) . 'advanced-cache.php', join( "\n" , $string ), FS_CHMOD_FILE );
+		if (false === $put_acache_success)
+		{
+			static::alert( sprintf(__('Advanced cache file (%s) could not be written!<br />Please check the permissions and ownership of the wp-content directory and any existing advanced-cache.php file. Then save again.', 'wp-ffpc'), $this->acache), self::LOG_WARNING );
 			error_log('Generating advanced-cache.php failed: '.$this->acache.' is not writable');
 			return false;
 		}
+		
+		// invalidate the opcache on the file immediately rather than waiting for opcache timed checking
+		@opcache_invalidate( trailingslashit(WP_CONTENT_DIR) . 'advanced-cache.php' );
 
-		/* if no active site left no need for advanced cache :( */
-		if ( empty ( $this->global_config ) ) {
-			error_log('Generating advanced-cache.php failed: Global config is empty');
-			return false;
-		}
+		/* update in-memory $wp_ffpc_config and $this->global_saved for later validations */
+		$this->global_saved = !empty( $this->global_config[ $this->global_config_key ] );
+		if ( $this->global_saved )
+			$GLOBALS['wp_ffpc_config'] = $this->global_config[$this->global_config_key];
+		else
+			unset($GLOBALS['wp_ffpc_config']);
 
-
-		/* add the required includes and generate the needed code */
-		$string[] = "<?php";
-		$string[] = self::global_config_var . ' = ' . var_export ( $this->global_config, true ) . ';' ;
-		//$string[] = "include_once ('" . $this->acache_backend . "');";
-		$string[] = "include_once ('" . $this->acache_worker . "');";
-
-		/* write the file and start caching from this point */
-		return file_put_contents( $this->acache, join( "\n" , $string ) );
-
+		/* cleanup possible leftover files from previous plugin versions */
+		$remote_dir = $wp_filesystem->find_folder($this->plugin_dir);
+		if (false !== $remote_dir) {
+			$remote_dir = trailingslashit( $remote_dir );
+			$check = array ( 'nginx-sample.conf', 'wp-ffpc.admin.css', 'wp-ffpc-common.php' );
+			foreach ( $check as $fname ) {
+				$fname = $remote_dir . $fname;
+				$wp_filesystem->delete( $fname );
+			}
+		}		
+		return true;
 	}
 
 	/**
@@ -1148,7 +1157,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 *
 	 */
 	private function update_global_config ( $remove_site = false ) {
-
 		/* remove or add current config to global config */
 		if ( $remove_site ) {
 			unset ( $this->global_config[ $this->global_config_key ] );
@@ -1156,10 +1164,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		else {
 			$this->global_config[ $this->global_config_key ] = $this->options;
 		}
-
 		/* deploy advanced-cache.php */
 		$this->deploy_advanced_cache ();
-
 		/* save options to database */
 		update_site_option( $this->global_option , $this->global_config );
 	}
@@ -1168,77 +1174,126 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	/**
 	 * generate cache entry for every available permalink, might be very-very slow,
 	 * therefore it starts a background process
-	 *
+	 * Note: Because it is not guaranteed that advanced process mgmt like forking or
+	 * direct file descriptors is installed, the input/output to the worker is done
+	 * by simple files. I acknowledge this could be a security issue and I can only
+	 * hope that the *nix or Windows security model will protect against anyone altering
+	 * files during read/write of them
+	 * BUGBUG this may not support multisite where it is NOT network activated. One problem
+	 * is that multiple subsite admins could run precache operations at the same/overlapping times. 
+	 * A quick hack of appending the blog id to the php and log filenames is in place. Needs much more testing.
 	 */
 	private function precache ( &$links ) {
+		/* double check if we do have any links to precache */
+		if ( empty( $links ) )
+			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
+		else if ( $this->precache_running() )
+			return __('Precache process is already running. You must wait until it completes or empty the cache.', 'wp-ffpc');
+		
+		$links = array_keys($links);
+		if ( empty( $links ) )
+			return __('No content to precache. Precache request cancelled.', 'wp-ffpc');
 
-		/* double check if we do have any links to pre-cache */
-		if ( !empty ( $links ) && !$this->precache_running() )  {
+		// create temporary directory to hold list of links and log file
+		if (!is_dir($this->precache_worker_dir))
+			@mkdir($this->precache_worker_dir, 0700);
+		if (is_dir($this->precache_worker_dir))
+			chmod($this->precache_worker_dir, 0700);
+		else
+			return __('Failed to make precache worker temporary directory. Precache request cancelled.', 'wp-ffpc');
 
-			$out = '<?php
-				$links = ' . var_export ( $links , true ) . ';
+		// write links to data file
+		if (false === file_put_contents($this->precache_datafile, implode("\n", $links), LOCK_EX))
+			return __('Failed to send URLs to precache worker using temporary directory. Precache request cancelled.', 'wp-ffpc');
+		
+		// create command string for *nix or windows and start worker
+		if (static::isWindows()) {
+			// must check for php in path first; because if not in path on Windows, then a hidden error dialog will occur and forever hang this process
+			// where is present in all Windows Server versions 2003+
+			exec('where php.exe', $phppath, $exitcode);
+			if (0 != $exitcode)
+				return __('Precache worker failed to start.', 'wp-ffpc') . __(' PHP is not in the PATH', 'wp-ffpc');
 
-				echo "permalink\tgeneration time (s)\tsize ( kbyte )\n";
-				foreach ( $links as $permalink => $dummy ) {
-					$starttime = explode ( " ", microtime() );
-					$starttime = $starttime[1] + $starttime[0];
-
-						$page = file_get_contents( $permalink );
-						$size = round ( ( strlen ( $page ) / 1024 ), 2 );
-
-					$endtime = explode ( " ", microtime() );
-					$endtime = round( ( $endtime[1] + $endtime[0] ) - $starttime, 2 );
-
-					echo $permalink . "\t" .  $endtime . "\t" . $size . "\n";
-					unset ( $page, $size, $starttime, $endtime );
-					sleep( 1 );
-				}
-				unlink ( "'. $this->precache_phpfile .'" );
-			?>';
-
-			file_put_contents ( $this->precache_phpfile, $out  );
-			/* call the precache worker file in the background */
-			$shellfunction = $this->shell_function;
-			$shellfunction( 'php '. $this->precache_phpfile .' >'. $this->precache_logfile .' 2>&1 &' );
+			// create command for worker; must name window, do Windows specific quote escaping, and use popen() so to not wait on the child process
+			$strCommand = 'start "wp-ffpcworker" /B ' . escapeshellarg($phppath[0]) . ' ' .
+				escapeshellarg($this->plugin_dir . self::precache_phpfile) . ' ' . escapeshellarg($this->precache_datafile) . ' ' . escapeshellarg($this->precache_logfile);
+			$stdoutCommand = popen($strCommand, 'r');
+			if (false === $stdoutCommand)
+				return __('Precache worker failed to start.', 'wp-ffpc');
+			pclose($stdoutCommand);
 		}
-
+		else {
+			exec('which php', $phppath, $exitcode);
+			if (0 != $exitcode)
+				return __('Precache worker failed to start.', 'wp-ffpc') . __(' PHP is not in the PATH', 'wp-ffpc');
+			$strCommand = 'nohup php ' .
+				escapeshellarg($this->plugin_dir . self::precache_phpfile) . ' ' . escapeshellarg($this->precache_datafile) . ' ' . escapeshellarg($this->precache_logfile) .
+				' > /dev/null 2>> ' . escapeshellarg($this->precache_logfile) . ' & echo $?';
+			exec($strCommand, $outCommand);
+			if ('0' !== $outCommand[0])
+				return __('Precache worker failed to start.', 'wp-ffpc') . __(' Error= ', 'wp-ffpc') . $outCommand[0];
+		}
+		return true;
 	}
 
 	/**
 	 * check is precache is still ongoing
-	 *
+	 * returns false or the integer process id of the precache worker
 	 */
-	private function precache_running () {
-		$return = false;
-
-		/* if the precache file exists, it did not finish running as it should delete itself on finish */
-		if ( file_exists ( $this->precache_phpfile )) {
-			$return = true;
+	private function precache_running() {
+		// get list of processes and filter to be only the process working on this site/blog's datafile
+		if (static::isWindows()) {
+			// wmic is present on all Windows Server versions 2003+
+			exec('wmic /output:stdout process where (executablepath like "%\\\\php.exe" AND CommandLine like "%' . addslashes($this->precache_datafile) . '%") get handle', $cmdOutput, $exitcode);
+			if ( (0 != $exitcode) || ('handle' !== strtolower($cmdOutput[0])) )
+				return false;
+			$processId = $cmdOutput[1];
 		}
-		/*
-		 [TODO] cross-platform process check; this is *nix only
 		else {
-			$shellfunction = $this->shell_function;
-			$running = $shellfunction( "ps aux | grep \"". $this->precache_phpfile ."\" | grep -v grep | awk '{print $2}'" );
-			if ( is_int( $running ) && $running != 0 ) {
-				$return = true;
-			}
+			$processId = exec('ps aux | grep ' . escapeshellarg('php[ \t]\+' . $this->precache_datafile) . ' | grep -F -v grep | awk \'{print $2}\'');
 		}
-		*/
+		if (empty($processId) || (!is_numeric($processId)))
+			return false;
+		return intval($processId);
+	}
 
-		return $return;
+	/**
+	 * stop precache worker for current siteid-blogid
+	 */
+	private function precache_stop() {
+		// get list of processes and filter to be only the process working on this site/blog's datafile
+		$processId = $this->precache_running();
+		if (false !== $processId) {
+			// worker is still running, kill the process
+			if (static::isWindows()) {
+				exec('wmic /output:stdout process where (handle=' . $processId . ') call terminate 1', $cmdOutput, $exitcode);
+			}
+			else {
+				exec('kill -9 ' . $processId);
+				sleep(1);
+			}
+			$processId = $this->precache_running();
+			if (false !== $processId)
+				return false;
+		}
+		if (file_exists($this->precache_datafile))
+			@unlink($this->precache_datafile);	// remove if worker failed to do so
+		return true;
 	}
 
 	/**
 	 * run full-site precache
 	 */
 	public function precache_coldrun () {
+		// check for needed exec function to start worker
+		if ( !$this->shell_function )
+			return __( 'Precache failed. Several PHP system functions have been disabled.' , 'wp-ffpc');
 
 		/* container for links to precache, well be accessed by reference */
 		$links = array();
 
-		/* when plugin is  network wide active, we need to pre-cache for all link of all blogs */
-		if ( $this->network ) {
+		/* when plugin is  network wide active, we need to precache for all link of all blogs */
+		if ( static::$network_activated ) {
 			/* list all blogs */
 			global $wpdb;
 			$pfix = empty ( $wpdb->base_prefix ) ? 'wp_' : $wpdb->base_prefix;
@@ -1256,10 +1311,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$this->precache_list_permalinks ( $links, false );
 		}
 
-		/* double check if we do have any links to pre-cache */
-		if ( !empty ( $links ) )  {
-			$this->precache ( $links );
-		}
+		/* request start of precache process */
+		return $this->precache( $links );
 	}
 
 	/**
@@ -1334,6 +1387,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		wp_reset_postdata();
 
 		/* switch back to original site if we navigated away */
+		// BUGBUG not correctly restoring original site; see https://codex.wordpress.org/Function_Reference/restore_current_blog
 		if ( $site !== false ) {
 			switch_to_blog( $current_blog );
 		}
