@@ -19,7 +19,7 @@ if (empty($links)) {
 // open the logfile for writing
 $logfile = false;
 if (isset($argv[2])) {
-	$logfile = fopen($argv[2], 'w');
+	$logfile = fopen($argv[2], 'wb');
 	if (false === $logfile) {
 		fwrite(STDERR, 'wp-ffpc precache worker can not create logfile');
 		exit(1);

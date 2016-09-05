@@ -42,7 +42,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	private $valid_cache_type = array ();
 	private $list_uri_vars = array();
 	private $shell_function = false;
-	private $shell_possibilities = array ();
 	private $backend = NULL;
 	private $scheduled = false;
 
@@ -72,17 +71,20 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/* global options identifier */
 		$this->global_option = $this->plugin_constant . '-global';
 
-		/* search for a system function */
-		$this->shell_possibilities = array ( 'exec' );	// array ( 'exec', 'popen', 'shell_exec', 'system', 'passthru' );
+		// verify system functions; *nix needs exec(), Windows needs exec() and popen()
 		if (false == static::ini_get_bool('safe_mode')) {
-			/* get disabled functions list */
-			$disabled_functions = array_map('trim', explode(',', ini_get('disable_functions') ) );
-			foreach ( $this->shell_possibilities as $possible ) {
-				if ( function_exists ($possible) && !in_array( $possible, $disabled_functions ) ) {
-					/* set shell function */
-					$this->shell_function = $possible;
-					break;
+			// get disabled functions list
+			$disabled_functions = array_map('trim', explode(',', ini_get('disable_functions')));
+			if (function_exists('exec') && !in_array('exec', $disabled_functions)) {
+				if (static::isWindows()) {
+					if ( (function_exists('popen') && !in_array('popen', $disabled_functions)) &&
+						 (function_exists('pclose') && !in_array('pclose', $disabled_functions)) ) {
+						$this->shell_function = true;
+					}
 				}
+				else {
+					$this->shell_function = true;
+				}	
 			}
 		}
 
@@ -873,19 +875,15 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<fieldset id="<?php echo $this->plugin_constant ?>-precache">
 			<legend><?php _e( 'Precache', 'wp-ffpc'); ?></legend>
 			<dl>
-				<dt>
-					<?php if ( 'exec' !== $this->shell_function ) { ?>
-						<strong><?php
-							_e( 'Precache functionality is disabled due to unavailable system call function. <br />Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please enable one of the following functions if you want to use precaching: ' , 'wp-ffpc');
-							echo join( ', ' , $this->shell_possibilities ); ?></strong>
-					<?php }
-					else { ?>
-						<input class="wp-ffpc-button" type="submit" name="<?php echo $this->button_precache ?>" id="<?php echo $this->button_precache ?>" value="<?php _e('Precache', 'wp-ffpc') ?>" />
-					<?php } ?>
-				</dt>
-				<dd>
-					<span class="description"><?php _e('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to precache.', 'wp-ffpc'); ?></span>
-				</dd>
+				<?php if ( $this->shell_function ) {
+					echo '<dt><input class="wp-ffpc-button" type="submit" name="' . $this->button_precache . '" id="' . $this->button_precache . '" value="' . __('Precache', 'wp-ffpc') . '" /></dt>';
+					echo '<dd><span class="description">' . __('Start a background process that visits all permalinks of all blogs it can found thus forces WordPress to generate cached version of all the pages.<br />The plugin tries to visit links of taxonomy terms without the taxonomy name as well. This may generate 404 hits, please be prepared for these in your logfiles if you plan to precache.', 'wp-ffpc') . '</span></dd>'; 
+				}
+				else
+				{
+					_e( '<dt>Precache functionality is disabled due to unavailable system call functions. Since precaching may take a very long time, it\'s done through a background CLI process in order not to run out of max execution time of PHP. Please disable <code>safe_mode</code> and enable the following functions if you want to use precaching. ' , 'wp-ffpc');
+					_e( '<br/>Linux, BSD, or *nix needs <code>exec()</code><br/>Windows needs <code>exec(), popen(), pclose()</code></dt>' , 'wp-ffpc');
+				} ?>
 			</dl>
 			</fieldset>
 			<fieldset id="<?php echo $this->plugin_constant ?>-flush">
@@ -1205,7 +1203,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			return __('Failed to make precache worker temporary directory. Precache request cancelled.', 'wp-ffpc');
 
 		// write links to data file
-		if (false === file_put_contents($this->precache_datafile, implode(PHP_EOL, $links), LOCK_EX))
+		if (false === file_put_contents($this->precache_datafile, implode("\n", $links), LOCK_EX))
 			return __('Failed to send URLs to precache worker using temporary directory. Precache request cancelled.', 'wp-ffpc');
 		
 		// create command string for *nix or windows and start worker
@@ -1216,7 +1214,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			if (0 != $exitcode)
 				return __('Precache worker failed to start.', 'wp-ffpc') . __(' PHP is not in the PATH', 'wp-ffpc');
 
-			// create command for worker; must name window and do Windows specific quote escaping
+			// create command for worker; must name window, do Windows specific quote escaping, and use popen() so to not wait on the child process
 			$strCommand = 'start "wp-ffpcworker" /B ' . escapeshellarg($phppath[0]) . ' ' .
 				escapeshellarg($this->plugin_dir . self::precache_phpfile) . ' ' . escapeshellarg($this->precache_datafile) . ' ' . escapeshellarg($this->precache_logfile);
 			$stdoutCommand = popen($strCommand, 'r');
@@ -1288,7 +1286,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	public function precache_coldrun () {
 		// check for needed exec function to start worker
-		if ( 'exec' !== $this->shell_function )
+		if ( !$this->shell_function )
 			return __( 'Precache failed. Several PHP system functions have been disabled.' , 'wp-ffpc');
 
 		/* container for links to precache, well be accessed by reference */
