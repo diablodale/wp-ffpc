@@ -60,7 +60,7 @@ if ( isset($wp_ffpc_config['nocache_dyn']) && !empty($wp_ffpc_config['nocache_dy
 }
 
 /* check for cookies that will make us not cache the content, like logged in WordPress cookie */
-if ( isset($wp_ffpc_config['nocache_cookies']) && !empty($wp_ffpc_config['nocache_cookies']) ) {
+if ( is_string($wp_ffpc_config['nocache_cookies']) && ('' !== $wp_ffpc_config['nocache_cookies']) ) {
 	$nocache_cookies = array_map('trim',explode(",", $wp_ffpc_config['nocache_cookies'] ) );
 
 	if ( !empty( $nocache_cookies ) ) {

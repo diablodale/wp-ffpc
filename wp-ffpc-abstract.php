@@ -35,7 +35,6 @@ if (!class_exists('WP_FFPC_ABSTRACT')):
  */
 abstract class WP_FFPC_ABSTRACT {
 
-	const CAPABILITY_NEEDED = 'manage_options';
 	const LOG_INFO = 106;		// consts for alert mechanism; can't use LOG_*** constants because Windows PHP duplicates five of the values in PHP 5.5.12
 	const LOG_NOTICE = 105;
 	const LOG_WARNING = 104;
@@ -48,6 +47,8 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $options = array();
 	protected $defaults = array();
 	protected static $network_activated = false;
+	protected static $capability_needed = 'manage_options';
+	protected static $is_WP31_greater = true;
 	protected $settings_link = '';
 	protected $settings_slug = '';
 	protected $settings_page_hook_suffix = false;
@@ -106,16 +107,23 @@ abstract class WP_FFPC_ABSTRACT {
 			$this->donation = true;
 		}
 
-		//$this->utils =  new PluginUtils();
+		// boolean flag for WP 3.1 or greater (used for WP 3.0 workarounds)
+		global $wp_version;
+		if ( version_compare($wp_version, '3.1', '<') )
+			static::$is_WP31_greater = false;
 
 		/* we need network wide plugin check functions */
 		if ( ! function_exists( 'is_plugin_active_for_network' ) )
 			require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
 
 		/* check if plugin is network-activated */
-		if ( @is_plugin_active_for_network ( $this->plugin_file ) ) {
+		if ( is_plugin_active_for_network ( $this->plugin_file ) ) {
 			static::$network_activated = true;
-			$this->settings_slug = 'settings.php';
+			static::$capability_needed = 'manage_network_options';
+			if (static::$is_WP31_greater)
+				$this->settings_slug = 'settings.php';
+			else
+				$this->settings_slug = 'ms-admin.php';
 		}
 		else {
 			$this->settings_slug = 'options-general.php';
@@ -174,7 +182,7 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( is_admin() ) {
 			add_action( 'admin_init', array(&$this,'plugin_admin_init'));
 			/* register to add submenu to admin menu */
-			if ( static::$network_activated )
+			if ( static::$network_activated && static::$is_WP31_greater)
 				add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
 			else
 				add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
@@ -256,9 +264,9 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_init() {
 		/* register setting link for the plugin page */
-		if ( static::$network_activated )
+		if ( static::$network_activated && static::$is_WP31_greater)
 			add_filter( "network_admin_plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
-		else
+		else if (current_user_can( static::$capability_needed ))
 			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 
 		/* load additional moves */
@@ -270,8 +278,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_menu() {
 		/* add submenu to settings pages */
-		// TODO consider switching to use add_options_page()
-		$this->settings_page_hook_suffix = add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, self::CAPABILITY_NEEDED, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
+		$this->settings_page_hook_suffix = add_submenu_page( $this->settings_slug, $this->plugin_name . __( ' options' , 'wp-ffpc'), $this->plugin_name, static::$capability_needed, $this->plugin_settings_page, array ( &$this , 'plugin_admin_panel' ) );
 	}
 
 	/**
@@ -378,8 +385,10 @@ abstract class WP_FFPC_ABSTRACT {
 					$update = $_POST[$key];
 
 					/* get rid of slashes in strings, just in case */
-					if ( is_string ( $update ) )
-						$update = stripslashes($update);
+					// TODO investigate this stripslashes(); seems an inconsistent hack for something unknown like the removed legacy magic_quotes_gpc
+					if ( is_string ( $update ) ) {
+						$update = trim(stripslashes($update));
+					}
 
 					$options[$key] = $update;
 				}
@@ -675,7 +684,7 @@ abstract class WP_FFPC_ABSTRACT {
 		// don't show notices to users that can't do anything about them
 		// without this logic, it is possible for non-admins (e.g. subscribers) to see notices
 		// on their user profile editing page because that page is considered an "admin" page
-		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) return false;
+		if ( !current_user_can( static::$capability_needed ) ) return false;
 
 		// select to which admin pages these notices are visible
 		// network_activated=true means the superadmin network admin pages

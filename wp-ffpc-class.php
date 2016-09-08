@@ -383,7 +383,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_load_dash() {
 		// security check
-		if ( !current_user_can( self::CAPABILITY_NEEDED ) ) wp_die( );
+		if ( !current_user_can( static::$capability_needed ) ) wp_die( );
 
 		/* save parameter updates, if there are any */
 		if ( isset( $_POST[ $this->button_save ] ) ) {
@@ -721,7 +721,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					<label for="nocache_cookies"><?php _e("Exclude based on cookies", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
-					<input type="text" name="nocache_cookies" id="nocache_cookies" value="<?php if(isset( $this->options['nocache_cookies'] ) ) echo $this->options['nocache_cookies']; ?>" />
+					<input type="text" name="nocache_cookies" id="nocache_cookies" value="<?php if(is_string( $this->options['nocache_cookies'] ) ) echo $this->options['nocache_cookies']; ?>" />
 					<span class="description"><?php _e('Exclude content based on cookies names starting with this from caching. Separate multiple cookies names with commas.<br />If you are caching with nginx, you should update your nginx configuration and reload nginx after changing this value.', 'wp-ffpc'); ?></span>
 				</dd>
 
@@ -1126,7 +1126,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			$nginx = str_replace ( 'LOGGEDIN_EXCEPTION' , '' , $nginx );
 
 		/* nginx can skip caching for visitors with certain cookies specified in the options */
-		if( $this->options['nocache_cookies'] ) {
+		if( is_string($this->options['nocache_cookies']) && ('' !== $this->options['nocache_cookies']) ) {
 			$cookies = str_replace( ",","|", $this->options['nocache_cookies'] );
 			$cookies = str_replace( " ","", $cookies );
 			$cookie_exception = '# avoid cache for cookies specified
