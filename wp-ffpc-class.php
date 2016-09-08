@@ -721,7 +721,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					<label for="nocache_cookies"><?php _e("Exclude based on cookies", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
-					<input type="text" name="nocache_cookies" id="nocache_cookies" value="<?php if(is_string( $this->options['nocache_cookies'] ) ) echo $this->options['nocache_cookies']; ?>" />
+					<textarea name="nocache_cookies" id="nocache_cookies" rows="2" cols="100" class="large-text code"><?php
+						if(is_string($this->options['nocache_cookies'])) echo $this->options['nocache_cookies'];
+					?></textarea>
 					<span class="description"><?php _e('Exclude content based on cookies names starting with this from caching. Separate multiple cookies names with commas.<br />If you are caching with nginx, you should update your nginx configuration and reload nginx after changing this value.', 'wp-ffpc'); ?></span>
 				</dd>
 
@@ -729,21 +731,26 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					<label for="nocache_url"><?php _e("Don't cache following URL paths - use with caution!", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
-					<textarea name="nocache_url" id="nocache_url" rows="3" cols="100" class="large-text code"><?php
-						if( isset( $this->options['nocache_url'] ) ) {
-							echo $this->options['nocache_url'];
-						}
+					<textarea name="nocache_url" id="nocache_url" rows="2" cols="100" class="large-text code"><?php
+						if(is_string($this->options['nocache_url'])) echo $this->options['nocache_url'];
 					?></textarea>
-					<span class="description"><?php _e('Regular expressions use you must! e.g. <em>pattern1|pattern2|etc</em>', 'wp-ffpc'); ?></span>
+					<span class="description"><?php
+						_e('You must use PCRE regular expressions! e.g. <code>^/wp-|^/cart</code>. All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters.', 'wp-ffpc');
+						_e(' The search is case-insensitive.', 'wp-ffpc');
+					?></span>
 				</dd>
 
 				<dt>
 					<label for="nocache_comment"><?php _e("Exclude from cache based on content", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
-					<input name="nocache_comment" id="nocache_comment" type="text" value="<?php if(isset( $this->options['nocache_comment'] ) ) echo $this->options['nocache_comment']; ?>" />
-					<span class="description"><?php _e('Enter a regex pattern that will trigger excluding content from caching. Eg. <!--nocache-->. Regular expressions use you must! e.g. <em>pattern1|pattern2|etc</em><br />
-					<strong>WARNING:</strong> be careful where you display this, because it will apply to any content, including archives, collection pages, singles, anything. If empty, this setting will be ignored.', 'wp-ffpc'); ?></span>
+					<textarea name="nocache_comment" id="nocache_comment" rows="2" cols="100" class="large-text code"><?php
+						if(is_string($this->options['nocache_comment'])) echo $this->options['nocache_comment'];
+					?></textarea>
+					<span class="description"><?php
+						_e('Enter a pattern of html content that excludes caching, e.g. <code>&lt;!--nocache--&gt;</code>. If empty, this setting will be ignored. ', 'wp-ffpc');
+						_e('You must use PCRE regular expressions! e.g. <code>^/wp-|^/cart</code>. All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters.', 'wp-ffpc');
+						_e('<br/><strong>WARNING:</strong> This will apply to all content including: archives, collection pages, categories, single pages, etc.', 'wp-ffpc'); ?></span>
 				</dd>
 
 			</dl>

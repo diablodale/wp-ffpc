@@ -42,19 +42,21 @@ if (defined('SID') && SID != '')
 $wp_ffpc_uri = $_SERVER['REQUEST_URI'];
 
 /* no cache for robots.txt */
-if ( stripos($wp_ffpc_uri, 'robots.txt') ) {
+if ( 0 === strncasecmp($wp_ffpc_uri, '/robots.txt', 11) ) {
 	__debug__ ( 'Skippings robots.txt hit');
 	return false;
 }
 
 /* multisite files can be too large for memcached */
-if ( function_exists('is_multisite') && stripos($wp_ffpc_uri, '/files/') && is_multisite() ) {
-	__debug__ ( 'Skippings multisite /files/ hit');
+// https://codex.wordpress.org/Multisite_Network_Administration#Uploaded_File_Path
+if (is_multisite() && (0 === @substr_compare($_SERVER['SCRIPT_NAME'], '/ms-files.php', -13, 13, true))) {
+	__debug__ ( 'Skipping multisite legacy ms-files hit');
 	return false;
 }
 
 /* no cache for uri with query strings, things usually go bad that way */
-if ( isset($wp_ffpc_config['nocache_dyn']) && !empty($wp_ffpc_config['nocache_dyn']) && stripos($wp_ffpc_uri, '?') !== false ) {
+// TODO reevaluate this because this causes the default WP setup (non-pretty links) and default wp-ffpc config will not cache
+if ( $wp_ffpc_config['nocache_dyn'] && (stripos($wp_ffpc_uri, '?') !== false) ) {
 	__debug__ ( 'Dynamic url cache is disabled ( url with "?" ), skipping');
 	return false;
 }
@@ -76,12 +78,17 @@ if ( is_string($wp_ffpc_config['nocache_cookies']) && ('' !== $wp_ffpc_config['n
 	}
 }
 
-/* no cache for excluded URL patterns */
-if ( isset($wp_ffpc_config['nocache_url']) && trim($wp_ffpc_config['nocache_url']) ) {
-	$pattern = sprintf('#%s#', trim($wp_ffpc_config['nocache_url']));
-	if ( preg_match($pattern, $wp_ffpc_uri) ) {
-		__debug__ ( "Cache exception based on URL regex pattern matched, skipping");
-		return false;
+// no cache for excluded URL patterns
+if ( is_string($wp_ffpc_config['nocache_url']) ) {
+	// TODO trim() is only needed for legacy advanced-cache.php files saved/created with whitespace; can micro-optimize by removing the trim() and combining if tests
+	$wp_ffpc_config['nocache_url'] = trim($wp_ffpc_config['nocache_url']);
+	if ('' !== $wp_ffpc_config['nocache_url']) {
+		// TODO consider switching delimiter to one of these |`^ because # is very common in URLs therefore more likely to be searched
+		$pattern = sprintf('#%s#i', $wp_ffpc_config['nocache_url']);
+		if ( 1 === preg_match($pattern, $wp_ffpc_uri) ) {
+			__debug__ ( "Cache exception based on URL regex pattern matched, skipping");
+			return false;
+		}
 	}
 }
 
@@ -298,12 +305,16 @@ function wp_ffpc_callback( $buffer ) {
 	if (strlen($buffer) == 0)
 		return '';
 
-	if ( isset($wp_ffpc_config[ 'nocache_comment' ]) && !empty($wp_ffpc_config[ 'nocache_comment' ]) && trim($wp_ffpc_config[ 'nocache_comment' ])) {
-		$pattern = sprintf('#%s#', trim($wp_ffpc_config['nocache_comment']));
-		__debug__ ( sprintf("Testing comment with pattern: %s", $pattern));
-		if ( preg_match($pattern, $buffer) ) {
-			__debug__ ( "Cache exception based on content regex pattern matched, skipping");
-			return $buffer;
+	if ( is_string($wp_ffpc_config['nocache_comment']) ) {
+		// TODO trim() is only needed for legacy advanced-cache.php files saved/created with whitespace; can micro-optimize by removing the trim() and combining if tests
+		$wp_ffpc_config['nocache_comment'] = trim($wp_ffpc_config['nocache_comment']);
+		if ('' !== $wp_ffpc_config['nocache_comment']) {
+			$pattern = sprintf('#%s#', $wp_ffpc_config['nocache_comment']);
+			__debug__ ( sprintf("Testing comment with pattern: %s", $pattern));
+			if ( preg_match($pattern, $buffer) ) {
+				__debug__ ( "Cache exception based on content regex pattern matched, skipping");
+				return $buffer;
+			}
 		}
 	}
 
