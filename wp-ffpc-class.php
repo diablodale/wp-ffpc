@@ -711,7 +711,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 									</td>
 									<td>
 										<input type="checkbox" name="nocache_dyn" id="nocache_dyn" value="1" <?php checked($this->options['nocache_dyn'],true); ?> />
-					<span class="description"><?php _e('Exclude every URL with "?" in it.', 'wp-ffpc'); ?></span>
+										<span class="description"><?php _e('Exclude every URL with "?" in it.', 'wp-ffpc'); ?></span>
 									</td>
 								</tr>
 						</tbody>
@@ -728,29 +728,41 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label for="nocache_url"><?php _e("Don't cache following URL paths - use with caution!", 'wp-ffpc'); ?></label>
+					<label><?php _e("Don't cache content when DONOTCACHEPAGE = true", 'wp-ffpc'); ?></label>
+				</dt>
+				<dd>
+					<input type="checkbox" checked disabled readonly/>
+					<span class="description"><?php _e('When <code>DONOTCACHEPAGE=true</code> (e.g. in WooCommerce, wpShopGermany, Shopp, etc.) the content will not be cached. This is de facto standard and always selected.', 'wp-ffpc'); ?>
+				</dd>
+
+				<dt>
+					<label for="nocache_url"><?php _e("Don't cache URL paths - use with caution!", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_url" id="nocache_url" rows="2" cols="100" class="large-text code"><?php
 						if(is_string($this->options['nocache_url'])) echo $this->options['nocache_url'];
 					?></textarea>
 					<span class="description"><?php
-						_e('You must use PCRE regular expressions! e.g. <code>^/wp-|^/cart</code>. All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters.', 'wp-ffpc');
-						_e(' The search is case-insensitive.', 'wp-ffpc');
+						_e('You must use PCRE regular expressions! ', 'wp-ffpc');
+						_e('e.g. <code>^/wp-|^/cart</code>. ', 'wp-ffpc');
+						_e('All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters. ', 'wp-ffpc');
+						_e('The search is case-insensitive. ', 'wp-ffpc');
 					?></span>
 				</dd>
 
 				<dt>
-					<label for="nocache_comment"><?php _e("Exclude from cache based on content", 'wp-ffpc'); ?></label>
+					<label for="nocache_comment"><?php _e("Don't cache based on patterns in content", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_comment" id="nocache_comment" rows="2" cols="100" class="large-text code"><?php
 						if(is_string($this->options['nocache_comment'])) echo $this->options['nocache_comment'];
 					?></textarea>
 					<span class="description"><?php
-						_e('Enter a pattern of html content that excludes caching, e.g. <code>&lt;!--nocache--&gt;</code>. If empty, this setting will be ignored. ', 'wp-ffpc');
-						_e('You must use PCRE regular expressions! e.g. <code>^/wp-|^/cart</code>. All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters.', 'wp-ffpc');
-						_e('<br/><strong>WARNING:</strong> This will apply to all content including: archives, collection pages, categories, single pages, etc.', 'wp-ffpc'); ?></span>
+						_e('If your pattern is found in the content, the content will not be cached. ', 'wp-ffpc');
+						_e('You must use PCRE regular expressions! ', 'wp-ffpc');
+						_e('e.g. <code>&lt;!--nocache--&gt;|&lt;!--private--&gt;</code>. ', 'wp-ffpc');
+						_e('All <code>#</code> hash characters in the regex must be escaped when they are used as literal characters. ', 'wp-ffpc');
+						_e('<strong>WARNING:</strong> This will apply to all content including: archives, collection pages, categories, single pages, etc. ', 'wp-ffpc'); ?></span>
 				</dd>
 
 			</dl>

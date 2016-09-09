@@ -42,12 +42,12 @@ if (defined('SID') && SID != '')
 $wp_ffpc_uri = $_SERVER['REQUEST_URI'];
 
 /* no cache for robots.txt */
-if ( 0 === strncasecmp($wp_ffpc_uri, '/robots.txt', 11) ) {
+if ( 0 === strcasecmp($wp_ffpc_uri, '/robots.txt') ) {
 	__debug__ ( 'Skippings robots.txt hit');
 	return false;
 }
 
-/* multisite files can be too large for memcached */
+/* multisite legacy ms-files support can be too large for memcached */
 // https://codex.wordpress.org/Multisite_Network_Administration#Uploaded_File_Path
 if (is_multisite() && (0 === @substr_compare($_SERVER['SCRIPT_NAME'], '/ms-files.php', -13, 13, true))) {
 	__debug__ ( 'Skipping multisite legacy ms-files hit');
@@ -116,8 +116,9 @@ if ( !isset($wp_ffpc_config['cache_loggedin']) || $wp_ffpc_config['cache_loggedi
 	}
 }
 
-/* will store time of page generation */
-$wp_ffpc_gentime = 0;
+/* will calculate cache retrieval time */
+$mtime = explode ( " ", microtime() );
+$wp_ffpc_gentime = $mtime[1] + $mtime[0];
 
 /* backend connection failed, no caching :( */
 if ( $wp_ffpc_backend->status() === false ) {
@@ -232,17 +233,18 @@ if ( isset($wp_ffpc_config['response_header']) && $wp_ffpc_config['response_head
 	header( 'X-Cache-Engine: WP-FFPC with ' . $wp_ffpc_config['cache_type'] .' via PHP');
 
 /* HTML data */
+// TODO the check for the closing body tag is weak, e.g. when the tag is written by script
 if ( isset($wp_ffpc_config['generate_time']) && $wp_ffpc_config['generate_time'] == '1' && stripos($wp_ffpc_values['data'], '</body>') ) {
 	$mtime = explode ( " ", microtime() );
 	$wp_ffpc_gentime = ( $mtime[1] + $mtime[0] ) - $wp_ffpc_gentime;
 
-	$insertion = "\n<!-- WP-FFPC cache output stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] ."\n\tUNIX timestamp: ". time() . "\n\tdate: ". date( 'c' ) . "\n\tfrom server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
+	$insertion = "\n<!-- WP-FFPC cache retrieval stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] . "\n\tcache response: " . round($wp_ffpc_gentime, 6) . " seconds\n\tUNIX timestamp: ". time() . "\n\tdate: ". date( 'c' ) . "\n\tvia web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
 	$index = stripos( $wp_ffpc_values['data'] , '</body>' );
 
 	$wp_ffpc_values['data'] = substr_replace( $wp_ffpc_values['data'], $insertion, $index, 0);
 }
 
-echo trim($wp_ffpc_values['data']);
+echo $wp_ffpc_values['data'];
 
 flush();
 die();
@@ -286,25 +288,26 @@ function wp_ffpc_callback( $buffer ) {
 	/* check is it's a redirect */
 	global $wp_ffpc_redirect;
 
+	// no cache de facto; those pages on which DONOTCACHEPAGE is defined and true
+	if ( defined('DONOTCACHEPAGE') && DONOTCACHEPAGE )
+		return $buffer;
+
 	/* no is_home = error, WordPress functions are not availabe */
 	if (!function_exists('is_home'))
 		return $buffer;
 
-	/* no <body> close tag = not HTML, also no <rss>, not feed, don't cache */
-	if ( stripos($buffer, '</body>') === false && stripos($buffer, '</rss>') === false )
+	// no <html> close tag = not HTML, also no <rss>, not feed, don't cache
+	// BUGBUG still doesn't handle a rich set of cases. What is the goal here? Why can't we cache anything that isn't elsewhere excluded?
+	if ( (stripos($buffer, '</html>') === false) && (stripos($buffer, '</rss>') === false) )
 		return $buffer;
-
-	/* reset meta to solve conflicts */
-	$meta = array();
-
-	/* trim unneeded whitespace from beginning / ending of buffer */
-	$buffer = trim( $buffer );
 
 	/* Can be a trackback or other things without a body.
 	   We do not cache them, WP needs to get those calls. */
-	if (strlen($buffer) == 0)
+	$buffer = trim($buffer);
+	if (strlen($buffer) === 0)
 		return '';
 
+	// scan content for any strings which cause no caching
 	if ( is_string($wp_ffpc_config['nocache_comment']) ) {
 		// TODO trim() is only needed for legacy advanced-cache.php files saved/created with whitespace; can micro-optimize by removing the trim() and combining if tests
 		$wp_ffpc_config['nocache_comment'] = trim($wp_ffpc_config['nocache_comment']);
@@ -318,6 +321,8 @@ function wp_ffpc_callback( $buffer ) {
 		}
 	}
 
+	/* reset meta to solve conflicts */
+	$meta = array();
 	if ( is_home() || is_feed() ) {
 		if (is_home())
 			$meta['type'] = 'home';
@@ -441,7 +446,7 @@ function wp_ffpc_callback( $buffer ) {
 		$mtime = explode ( " ", microtime() );
 		$wp_ffpc_gentime = ( $mtime[1] + $mtime[0] )- $wp_ffpc_gentime;
 
-		$insertion = "\n<!-- WP-FFPC cache generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneraton UNIX timestamp: ". time() . "\n\tgeneraton date: ". date( 'c' ) . "\n\tgenerator server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
+		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
 		$index = stripos( $buffer , '</body>' );
 
 		$to_store = substr_replace( $buffer, $insertion, $index, 0);
@@ -462,6 +467,7 @@ function wp_ffpc_callback( $buffer ) {
 	}
 
 	/* echoes HTML out */
-	return trim($buffer);
+	// TODO examine the logic to return only $buffer rather than $to_store; why skip the optional generation stats on the 1st serve?
+	return $buffer;
 }
 /*** END GENERATING CACHE ENTRY ***/
