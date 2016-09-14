@@ -25,7 +25,7 @@ License: GPLv3
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-include_once ( 'wp-ffpc-class.php' );
+include_once __DIR__ . '/wp-ffpc-class.php';
 
 $wp_ffpc_defaults = array (
 	'hosts'=>'127.0.0.1:11211',

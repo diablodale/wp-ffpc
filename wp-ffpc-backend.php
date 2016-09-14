@@ -25,6 +25,9 @@ if ( !function_exists('get_current_blog_id') )
 
 if (!class_exists('WP_FFPC_Backend')) :
 
+// array of cookies to look for when looking for authenticated users
+// it is a hack to store them in this file, however this is the only file shared in common w/ the admin option codebase
+$wp_ffpc_auth_cookies = array ( 'comment_author_' , 'wordpressuser_' , 'wp-postpass_', 'wordpress_logged_in_' );
 
 abstract class WP_FFPC_Backend {
 
@@ -60,9 +63,6 @@ abstract class WP_FFPC_Backend {
 		}
 
 		$this->options = $config;
-
-		/* these are the list of the cookies to look for when looking for logged in user */
-		$this->cookies = array ( 'comment_author_' , 'wordpressuser_' , 'wp-postpass_', 'wordpress_logged_in_' );
 
 		/* map the key with the predefined schemes */
 		$ruser = isset ( $_SERVER['REMOTE_USER'] ) ? $_SERVER['REMOTE_USER'] : '';
@@ -290,7 +290,7 @@ abstract class WP_FFPC_Backend {
 
 			/* need permalink functions */
 			if ( !function_exists('get_permalink') )
-				include_once ( ABSPATH . 'wp-includes/link-template.php' );
+				include_once ABSPATH . 'wp-includes/link-template.php';
 
 			/* get permalink */
 			$permalink = get_permalink( $post_id );
@@ -555,12 +555,10 @@ abstract class WP_FFPC_Backend {
 
 endif;
 
-// TODO replace the below code with deterministic loading
-// because dynamic directory listing and loading of files is not a performant
-// approach. Going to disk is always bad with caches. The code of wp-ffpc is
-// always tested and released together as a matching bundle of files. Therefore,
-// the files to load are always known and remove the need to dynamically go to disk.
-$wp_ffpc_backends = glob( dirname( __FILE__ ) . "/backends/*.php" );
-foreach ( $wp_ffpc_backends as $backend )
-	include_once $backend;
-unset( $wp_ffpc_backends, $backend );
+// TODO try to replace the below with config-specified loading in acache
+// while loading all in option pages
+include_once __DIR__ . '/backends/apc.php';
+include_once __DIR__ . '/backends/apcu.php';
+include_once __DIR__ . '/backends/memcache.php';
+include_once __DIR__ . '/backends/memcached.php';
+include_once __DIR__ . '/backends/redis.php';

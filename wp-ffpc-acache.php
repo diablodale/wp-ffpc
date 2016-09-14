@@ -61,23 +61,6 @@ if ( $wp_ffpc_config['nocache_dyn'] && (stripos($wp_ffpc_uri, '?') !== false) ) 
 	return false;
 }
 
-/* check for cookies that will make us not cache the content, like logged in WordPress cookie */
-if ( is_string($wp_ffpc_config['nocache_cookies']) && ('' !== $wp_ffpc_config['nocache_cookies']) ) {
-	$nocache_cookies = array_map('trim',explode(",", $wp_ffpc_config['nocache_cookies'] ) );
-
-	if ( !empty( $nocache_cookies ) ) {
-		foreach ($_COOKIE as $n=>$v) {
-			/* check for any matches to user-added cookies to no-cache */
-			foreach ( $nocache_cookies as $nocache_cookie ) {
-				if( strpos( $n, $nocache_cookie ) === 0 ) {
-					__debug__ ( "Cookie exception matched: $n, skipping");
-					return false;
-				}
-			}
-		}
-	}
-}
-
 // no cache for excluded URL patterns
 if ( is_string($wp_ffpc_config['nocache_url']) ) {
 	// TODO trim() is only needed for legacy advanced-cache.php files saved/created with whitespace; can micro-optimize by removing the trim() and combining if tests
@@ -94,31 +77,45 @@ if ( is_string($wp_ffpc_config['nocache_url']) ) {
 
 /* canonical redirect storage */
 $wp_ffpc_redirect = null;
-/* fires up the backend storage array with current config */
-include_once ('wp-ffpc-backend.php');
-$backend_class = 'WP_FFPC_Backend_' . $wp_ffpc_config['cache_type'];
-$wp_ffpc_backend = new $backend_class ( $wp_ffpc_config );
 
-//$wp_ffpc_backend = new WP_FFPC_Backend( $wp_ffpc_config );
+/* load backend storage codebase */
+include_once __DIR__ . '/wp-ffpc-backend.php';
 
-/* no cache for for logged in users unless it's set
-   identifier cookies are listed in backend as var for easier usage
-*/
-if ( !isset($wp_ffpc_config['cache_loggedin']) || $wp_ffpc_config['cache_loggedin'] == 0 || empty($wp_ffpc_config['cache_loggedin']) ) {
+// check for cookies that will make us not cache the content
+if (!empty($_COOKIE)) {
+	// start with the cookies that suggest users are logged-in 
+	if ( empty($wp_ffpc_config['cache_loggedin']) )
+		$nocache_cookies = $wp_ffpc_auth_cookies;
+	else
+		$nocache_cookies = array();
+	// next add admin-specified cookies
+	if ( is_string($wp_ffpc_config['nocache_cookies']) ) {
+		// support legacy advanced-cache.php config files that saved this value as a string w/ commas instead of an array of strings
+		$wp_ffpc_config['nocache_cookies'] = array_filter(
+			array_map('trim', explode(",", $wp_ffpc_config['nocache_cookies'])),
+			function($value) {return $value !== '';} );
+	}
+	if ( is_array($wp_ffpc_config['nocache_cookies']) )
+		$nocache_cookies = array_merge($nocache_cookies, $wp_ffpc_config['nocache_cookies']);
 
-	foreach ($_COOKIE as $n=>$v) {
-		foreach ( $wp_ffpc_backend->cookies as $nocache_cookie ) {
-			if( strpos( $n, $nocache_cookie ) === 0 ) {
-				__debug__ ( "No cache for cookie: $n, skipping");
+	// loop through browser cookies received and check for matches that will disable caching
+	foreach ( $nocache_cookies as $single_nocache ) {
+		foreach ($_COOKIE as $n=>$v) {
+			if( strpos( $n, $single_nocache ) === 0 ) {
+				__debug__ ( "Cookie exception matched: $n, skipping");
 				return false;
 			}
 		}
 	}
 }
 
-/* will calculate cache retrieval time */
+/* used to later calculate cache retrieval time */
 $mtime = explode ( " ", microtime() );
 $wp_ffpc_gentime = $mtime[1] + $mtime[0];
+
+/* fires up the backend storage array with current config */
+$backend_class = 'WP_FFPC_Backend_' . $wp_ffpc_config['cache_type'];
+$wp_ffpc_backend = new $backend_class ( $wp_ffpc_config );
 
 /* backend connection failed, no caching :( */
 if ( $wp_ffpc_backend->status() === false ) {

@@ -9,7 +9,7 @@ if ( !defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 /* get the worker file */
-include_once ( 'wp-ffpc.php' );
+include_once __DIR__ . '/wp-ffpc.php';
 
 /* run uninstall function */
 $wp_ffpc->plugin_uninstall();

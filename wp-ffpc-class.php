@@ -3,9 +3,9 @@
 if ( ! class_exists( 'WP_FFPC' ) ) :
 
 /* get the plugin abstract class*/
-include_once ( dirname(__FILE__) . '/wp-ffpc-abstract.php' );
+include_once __DIR__ . '/wp-ffpc-abstract.php';
 /* get the common functions class*/
-include_once ( dirname(__FILE__) .'/wp-ffpc-backend.php' );
+include_once __DIR__ . '/wp-ffpc-backend.php';
 
 /**
  * main wp-ffpc class
@@ -191,13 +191,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		/* add precache coldrun action for scheduled runs */
 		// TODO try to make precache operations as static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
-	}
-
-	/**
-	 * activation hook function, to be extended
-	 */
-	public function plugin_activate() {
-		/* we leave this empty to avoid not detecting WP network correctly */
 	}
 
 	/**
@@ -655,7 +648,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dt>
 				<dd>
 					<input type="checkbox" name="generate_time" id="generate_time" value="1" <?php checked($this->options['generate_time'],true); ?> />
-					<span class="description"><?php _e('Adds comment string including plugin name, cache engine and page generation time to every generated entry before closing <body> tag.', 'wp-ffpc'); ?></span>
+					<span class="description"><?php _e('Add hidden HTML comment before closing <code>&lt;/body&gt;</code> tag including: plugin name, cache engine, web/cache server, timestamp, page generation time, and cache response.', 'wp-ffpc'); ?></span>
 				</dd>
 
 			</dl>
@@ -666,11 +659,16 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<legend><?php _e( 'Set cache additions/excepions', 'wp-ffpc'); ?></legend>
 			<dl>
 				<dt>
-					<label for="cache_loggedin"><?php _e('Enable cache for logged in users', 'wp-ffpc'); ?></label>
+					<label for="cache_loggedin"><?php _e('Enable cache for logged-in users', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="checkbox" name="cache_loggedin" id="cache_loggedin" value="1" <?php checked($this->options['cache_loggedin'],true); ?> />
-					<span class="description"><?php _e('Cache pages even if user is logged in.', 'wp-ffpc'); ?></span>
+					<span class="description"><?php
+						_e('Cache content when user is logged-in. <strong>WARNING:</strong> We suggest this be disabled to prevent content specific for one user to be rendered from cache for another user. ', 'wp-ffpc');
+						_e('The logged-in state of a user is determined by the presence of cookies with names starting with one of the following substrings:', 'wp-ffpc');
+						global $wp_ffpc_auth_cookies;
+						echo ' <code>' . join(', ', $wp_ffpc_auth_cookies ) . '</code>';
+					?></span>
 				</dd>
 
 				<dt>
@@ -718,17 +716,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					</table>
 
 				<dt>
-					<label for="nocache_cookies"><?php _e("Exclude based on cookies", 'wp-ffpc'); ?></label>
+					<label for="nocache_cookies"><?php _e("Don't cache based on cookies", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_cookies" id="nocache_cookies" rows="2" cols="100" class="large-text code"><?php
 						if(is_string($this->options['nocache_cookies'])) echo $this->options['nocache_cookies'];
 					?></textarea>
-					<span class="description"><?php _e('Exclude content based on cookies names starting with this from caching. Separate multiple cookies names with commas.<br />If you are caching with nginx, you should update your nginx configuration and reload nginx after changing this value.', 'wp-ffpc'); ?></span>
+					<span class="description"><?php _e('If your substring is found in a cookie\'s name, the content will not be cached. The match is a case-sensitive substring match. e.g. <code>MyLogin_</code> prevents caching when either <code>MyLogin_v1</code> or <code>MyLogin_v2</code> cookie is received. You can provide multiple substrings on which to search by separating them with commas. If you are caching with nginx, you should update your nginx configuration and reload nginx after changing this value.', 'wp-ffpc'); ?></span>
 				</dd>
 
 				<dt>
-					<label><?php _e("Don't cache content when DONOTCACHEPAGE = true", 'wp-ffpc'); ?></label>
+					<label><?php _e("Don't cache content when DONOTCACHEPAGE=true", 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="checkbox" checked disabled readonly/>
@@ -1058,7 +1056,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		else {
 			$string[] = "<?php";
 			$string[] = '$wp_ffpc_config = ' . var_export ( $this->global_config, true ) . ';' ;
-			$string[] = "include_once ('" . $this->acache_worker . "');";
+			$string[] = "include_once '" . $this->acache_worker . "';";
 		}
 
 		// touch() and is_writable() are both not reliable/implemented in the WP Filesystem API
@@ -1131,7 +1129,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		}
 		$nginx = str_replace ( 'MEMCACHED_SERVERS' , $nginx_servers , $nginx );
 
-		$loggedincookies = join('|', $this->backend->cookies );
+		global $wp_ffpc_auth_cookies;
+		$loggedincookies = join('|', $wp_ffpc_auth_cookies );
 		/* this part is not used when the cache is turned on for logged in users */
 		$loggedin = '
     if ($http_cookie ~* "'. $loggedincookies .'" ) {
@@ -1341,7 +1340,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	private function precache_list_permalinks ( &$links, $site = false ) {
 		/* $post will be populated when running throught the posts */
 		global $post;
-		include_once ( ABSPATH . "wp-load.php" );
+		include_once ABSPATH . 'wp-load.php';
 
 		/* if a site id was provided, save current blog and change to the other site */
 		if ( $site !== false ) {

@@ -129,8 +129,9 @@ abstract class WP_FFPC_ABSTRACT {
 			$this->settings_slug = 'options-general.php';
 		}
 
-		/* set the settings page link string */
+		/* set the settings page link string and register the activation callback */
 		$this->settings_link = $this->settings_slug . '?page=' . $this->plugin_settings_page;
+		register_activation_hook( $this->plugin_file , array( &$this, 'plugin_activate' ) );
 
 		/* initialize plugin, plugin specific init functions */
 		$this->plugin_post_construct();
@@ -143,9 +144,15 @@ abstract class WP_FFPC_ABSTRACT {
 	}
 
 	/**
-	 * activation hook function, to be extended
+	 * activation hook function
 	 */
-	abstract function plugin_activate();
+	public function plugin_activate()
+	{
+		if (version_compare(PHP_VERSION, '5.3.0', '<')) {
+			deactivate_plugins( $this->plugin_file );
+			wp_die( $this->plugin_name . __(' plugin requires PHP version 5.3 or newer. The activation has been cancelled.', 'wp-ffpc') );
+		}
+	}
 
 	/**
 	 * deactivation hook function, to be extended
@@ -175,7 +182,6 @@ abstract class WP_FFPC_ABSTRACT {
 		/* get the options */
 		$this->plugin_options_read();
 
-		register_activation_hook( $this->plugin_file , array( &$this, 'plugin_activate' ) );
 		register_deactivation_hook( $this->plugin_file , array( &$this, 'plugin_deactivate' ) );
 
 		// admin pages only
@@ -220,9 +226,9 @@ abstract class WP_FFPC_ABSTRACT {
 			// we don't have credentials yet and request_filesystem_credentials() produced a form for the user to complete
 			$data = ob_get_clean();
 			if ( empty($data) ) wp_die(__('<h1>Error</h1><p>request_filesystem_credentials() failed. Can not proceed with this action.</p>')); // an unexpected situation occurred, we should have buffered a credential form
-			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			include_once ABSPATH . 'wp-admin/admin-header.php';
 			echo $data;
-			include( ABSPATH . 'wp-admin/admin-footer.php');
+			include ABSPATH . 'wp-admin/admin-footer.php';
 			exit;
 		}
 
@@ -235,9 +241,9 @@ abstract class WP_FFPC_ABSTRACT {
 			request_filesystem_credentials($posturl, '', true, $testdir, array_keys($fwd_post));
 			$data = ob_get_clean();
 			if ( empty($data) ) wp_die(__('<h1>Error</h1><p>request_filesystem_credentials() failed. Can not proceed with this action.</p>')); // an unexpected situation occurred, we should have buffered a credential form
-			include_once( ABSPATH . 'wp-admin/admin-header.php');
+			include_once ABSPATH . 'wp-admin/admin-header.php';
 			echo $data;
-			include( ABSPATH . 'wp-admin/admin-footer.php');
+			include ABSPATH . 'wp-admin/admin-footer.php';
 			exit;
 		}
 
@@ -370,6 +376,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param boolean $activating [optional] true on activation hook
 	 *
 	 */
+	// TODO make config store an array for nocache_cookies because string parsing, array create, etc. is very expensive to do on every request
 	protected function plugin_options_save ( $activating = false ) {
 
 		/* only try to update defaults if it's not activation hook, $_POST is not empty and the post
@@ -664,7 +671,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * display formatted alert message
 	 * 
-	 * @param string $msg error message; only single quotes are escaped, therefore possible to pass html
+	 * @param string $msg error message
 	 * @param string $error "level" of error
 	 * @param boolean $network_activated alert displayed for network admin only
 	 * 
@@ -708,21 +715,10 @@ abstract class WP_FFPC_ABSTRACT {
 		}
 
 		$r = '<div class="'. $css .'"><p>'. $msg .'</p></div>';
-		if ( version_compare(phpversion(), '5.3.0', '>=')) {
-			if ($network_activated)
-				add_action('network_admin_notices', function() use ($r) { echo $r; });
-			else
-				add_action('admin_notices', function() use ($r) { echo $r; });
-		}
-		else {
-			// note that create_function() memory is not garbage collected until the end of the entire page script
-			// any escaping method should allow html within the message but no php
-			$f = create_function ( '', 'echo \'' . str_replace('\'', '&apos;', $r) . '\';' );
-			if ($network_activated)
-				add_action('network_admin_notices', $f );
-			else
-				add_action('admin_notices', $f );
-		}
+		if ($network_activated)
+			add_action('network_admin_notices', function() use ($r) { echo $r; });
+		else
+			add_action('admin_notices', function() use ($r) { echo $r; });
 		static::debug( $msg, $level );
 		return true;
 	}
