@@ -15,7 +15,7 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 		}
 
 		/* verify apcu is working */
-		if ( @apcu_cache_info("user") != false ) {
+		if ( @apcu_cache_info('user') != false ) {
 			$this->log (  __translate__('backend OK', 'wp-ffpc' ) );
 			$this->alive = true;
 		}

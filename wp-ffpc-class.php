@@ -100,7 +100,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			// BUGBUG this only supports domain-style multisite; it doesn't support path-style multisite
 			$sitedomain = parse_url( get_option('siteurl') , PHP_URL_HOST);
 			if ( $_SERVER['HTTP_HOST'] != $sitedomain )
-				static::alert( sprintf( __("Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.", 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] ), self::LOG_WARNING);
+				static::alert( sprintf( __('Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.', 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] ), self::LOG_WARNING);
 			$this->global_config_key = $_SERVER['HTTP_HOST'];
 		}
 
@@ -636,7 +636,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label for="response_header"><?php _e("Add X-Cache-Engine header", 'wp-ffpc'); ?></label>
+					<label for="response_header"><?php _e('Add X-Cache-Engine header', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="checkbox" name="response_header" id="response_header" value="1" <?php checked($this->options['response_header'],true); ?> />
@@ -644,7 +644,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label for="generate_time"><?php _e("Add HTML debug comment", 'wp-ffpc'); ?></label>
+					<label for="generate_time"><?php _e('Add HTML debug comment', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="checkbox" name="generate_time" id="generate_time" value="1" <?php checked($this->options['generate_time'],true); ?> />
@@ -672,17 +672,17 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<?php _e("Excludes", 'wp-ffpc'); ?></label>
+					<?php _e('Excludes', 'wp-ffpc'); ?></label>
 				<dd>
 					<table style="width:100%">
 						<thead>
 							<tr>
-								<th style="width:16%; text-align:left"><label for="nocache_home"><?php _e("Exclude home", 'wp-ffpc'); ?></label></th>
-								<th style="width:16%; text-align:left"><label for="nocache_feed"><?php _e("Exclude feeds", 'wp-ffpc'); ?></label></th>
-								<th style="width:16%; text-align:left"><label for="nocache_archive"><?php _e("Exclude archives", 'wp-ffpc'); ?></label></th>
-								<th style="width:16%; text-align:left"><label for="nocache_page"><?php _e("Exclude pages", 'wp-ffpc'); ?></label></th>
-								<th style="width:16%; text-align:left"><label for="nocache_single"><?php _e("Exclude singulars", 'wp-ffpc'); ?></label></th>
-								<th style="width:17%; text-align:left"><label for="nocache_dyn"><?php _e("Dynamic requests", 'wp-ffpc'); ?></label></th>
+								<th style="width:16%; text-align:left"><label for="nocache_home"><?php _e('Exclude home', 'wp-ffpc'); ?></label></th>
+								<th style="width:16%; text-align:left"><label for="nocache_feed"><?php _e('Exclude feeds', 'wp-ffpc'); ?></label></th>
+								<th style="width:16%; text-align:left"><label for="nocache_archive"><?php _e('Exclude archives', 'wp-ffpc'); ?></label></th>
+								<th style="width:16%; text-align:left"><label for="nocache_page"><?php _e('Exclude pages', 'wp-ffpc'); ?></label></th>
+								<th style="width:16%; text-align:left"><label for="nocache_single"><?php _e('Exclude singulars', 'wp-ffpc'); ?></label></th>
+								<th style="width:17%; text-align:left"><label for="nocache_dyn"><?php _e('Dynamic requests', 'wp-ffpc'); ?></label></th>
 							</tr>
 						</thead>
 						<tbody>
@@ -716,7 +716,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					</table>
 
 				<dt>
-					<label for="nocache_cookies"><?php _e("Don't cache based on cookies", 'wp-ffpc'); ?></label>
+					<label for="nocache_cookies"><?php _e('Don\'t cache based on cookies', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_cookies" id="nocache_cookies" rows="2" cols="100" class="large-text code"><?php
@@ -726,7 +726,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label><?php _e("Don't cache content when DONOTCACHEPAGE=true", 'wp-ffpc'); ?></label>
+					<label><?php _e('Don\'t cache content when DONOTCACHEPAGE=true', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="checkbox" checked disabled readonly/>
@@ -734,7 +734,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label for="nocache_url"><?php _e("Don't cache URL paths - use with caution!", 'wp-ffpc'); ?></label>
+					<label for="nocache_url"><?php _e('Don\'t cache URL paths - use with caution!', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_url" id="nocache_url" rows="2" cols="100" class="large-text code"><?php
@@ -749,7 +749,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				</dd>
 
 				<dt>
-					<label for="nocache_comment"><?php _e("Don't cache based on patterns in content", 'wp-ffpc'); ?></label>
+					<label for="nocache_comment"><?php _e('Don\'t cache based on patterns in content', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<textarea name="nocache_comment" id="nocache_comment" rows="2" cols="100" class="large-text code"><?php

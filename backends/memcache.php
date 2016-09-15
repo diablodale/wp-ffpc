@@ -15,7 +15,7 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 
 		/* check for existing server list, otherwise we cannot add backends */
 		if ( empty ( $this->options['servers'] ) && ! $this->alive ) {
-			$this->log (  __translate__("servers list is empty, init failed", 'wp-ffpc' ), self::LOG_WARNING );
+			$this->log (  __translate__('servers list is empty, init failed', 'wp-ffpc' ), self::LOG_WARNING );
 			return false;
 		}
 
@@ -51,7 +51,7 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 	 */
 	protected  function _status () {
 		/* server status will be calculated by getting server stats */
-		$this->log (  __translate__("checking server statuses", 'wp-ffpc' ));
+		$this->log (  __translate__('checking server statuses', 'wp-ffpc' ));
 		/* get servers statistic from connection */
 		foreach ( $this->options['servers'] as $server_id => $server ) {
 			if ( $server['port'] === 0 )

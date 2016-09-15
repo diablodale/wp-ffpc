@@ -70,13 +70,12 @@ abstract class WP_FFPC_Backend {
 		$rhost = isset ( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
 		$scookie = isset ( $_COOKIE['PHPSESSID'] ) ? $_COOKIE['PHPSESSID'] : '';
 
-		if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https' )
+		if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && ($_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https'))
 			$_SERVER['HTTPS'] = 'on';
-
-		$scheme = ( isset($_SERVER['HTTPS']) && (( strtolower($_SERVER['HTTPS']) == 'on' )  || ( $_SERVER['HTTPS'] == '1' ) )) ? 'https://' : 'http://';
+		$scheme = (empty($_SERVER['HTTPS']) || ('off' === $_SERVER['HTTPS'])) ? 'http' : 'https';
 
 		$this->urimap = array(
-			'$scheme' => str_replace ( '://', '', $scheme ),
+			'$scheme' => $scheme,
 			'$host' => $rhost,
 			'$request_uri' => $ruri,
 			'$remote_user' => $ruser,
@@ -148,14 +147,14 @@ abstract class WP_FFPC_Backend {
 
 		$key_base = self::map_urimap($urimap, $this->options['key']);
 
-		if (( isset($this->options['hashkey']) && $this->options['hashkey'] == true) || $this->options['cache_type'] == 'redis' )
+		if (( isset($this->options['hashkey']) && $this->options['hashkey'] == true) || $this->options['cache_type'] === 'redis' )
 			$key_base = sha1($key_base);
 
 		$key = $prefix . $key_base;
 
-		$this->log ( sprintf( __translate__( 'original key configuration: %s', 'wp-ffpc'),  $this->options['key'] ) );
-		$this->log ( sprintf( __translate__( 'setting key for: %s', 'wp-ffpc'),  $key_base ) );
-		$this->log ( sprintf( __translate__( 'setting key to: %s', 'wp-ffpc'),  $key ) );
+		$this->log( __translate__("original key configuration: {$this->options['key']}", 'wp-ffpc') );
+		$this->log( __translate__("setting key for: $key_base", 'wp-ffpc') );
+		$this->log( __translate__("setting key to: $key", 'wp-ffpc') );
 		return $key;
 	}
 
@@ -175,12 +174,12 @@ abstract class WP_FFPC_Backend {
 		}
 
 		/* log the current action */
-		$this->log ( sprintf( __translate__( 'GET %s', 'wp-ffpc'),  $key ) );
+		$this->log( __translate__("get entry: $key", 'wp-ffpc') );
 
 		$result = $this->_get( $key );
 
 		if ( $result === false || $result === null )
-			$this->log ( sprintf( __translate__( 'failed to get entry: %s', 'wp-ffpc'),  $key ) );
+			$this->log( __translate__("failed to get entry: $key", 'wp-ffpc') );
 
 		return $result;
 	}
@@ -190,6 +189,9 @@ abstract class WP_FFPC_Backend {
 	 *
 	 * @param string $key Cache key to set with ( reference only, for speed )
 	 * @param mixed $data Data to set ( reference only, for speed )
+	 * @param optional param TTL (time to live) in seconds
+	 * BUGBUG there is incompatible different handling of the TTL value in the backend
+	 *        implementations, e.g. http://php.net/manual/en/memcached.expiration.php
 	 *
 	 * @return mixed $result status of set function
 	 */
@@ -198,11 +200,9 @@ abstract class WP_FFPC_Backend {
 		if ( ! $this->is_alive() )
 			return false;
 
-		/* log the current action */
-		$this->log ( sprintf( __translate__( 'set %s expiration time: %s', 'wp-ffpc'),  $key, $this->options['expire'] ) );
-
 		/* expiration time based is based on type from now on */
 		/* fallback */
+		// BUGBUG this if logic needs to be refactored to remove duplicate work
 		if ( $expire === false )
 			$expire = empty ( $this->options['expire'] ) ? 0 : $this->options['expire'];
 
@@ -212,13 +212,13 @@ abstract class WP_FFPC_Backend {
 			$expire = (int) $this->options['expire_taxonomy'];
 
 		/* log the current action */
-		$this->log ( sprintf( __translate__( 'SET %s', 'wp-ffpc'),  $key ) );
+		$this->log( __translate__("set entry: $key expire: $expire", 'wp-ffpc') );
 		/* proxy to internal function */
 		$result = $this->_set( $key, $data, $expire );
 
 		/* check result validity */
 		if ( $result === false || $result === null )
-			$this->log ( sprintf( __translate__( 'failed to set entry: %s', 'wp-ffpc'),  $key ), self::LOG_WARNING );
+			$this->log( __translate__("failed to set entry: $key", 'wp-ffpc'), self::LOG_WARNING );
 
 		return $result;
 	}
@@ -297,7 +297,7 @@ abstract class WP_FFPC_Backend {
 
 			/* no path, don't do anything */
 			if ( empty( $permalink ) && $permalink != false ) {
-				$this->log ( sprintf( __translate__( 'unable to determine path from Post Permalink, post ID: %s', 'wp-ffpc'),  $post_id ), self::LOG_WARNING );
+				$this->log( __translate__("unable to determine path from Post Permalink, post ID: $post_id", 'wp-ffpc'), self::LOG_WARNING );
 				return false;
 			}
 
@@ -405,7 +405,7 @@ abstract class WP_FFPC_Backend {
 
 						/* skip terms that have no post associated and somehow slipped
 						 * throught hide_empty */
-						if ( $term->count == 0)
+						if ( $term->count === 0)
 							continue;
 
 						/* get the permalink for the term */
@@ -460,7 +460,7 @@ abstract class WP_FFPC_Backend {
 	 */
 	protected function is_alive() {
 		if ( ! $this->alive ) {
-			$this->log (  __translate__("backend is not active, exiting function ", 'wp-ffpc') . __FUNCTION__, self::LOG_WARNING );
+			$this->log (  __translate__('backend is not active, exiting function ', 'wp-ffpc') . __FUNCTION__, self::LOG_WARNING );
 			return false;
 		}
 

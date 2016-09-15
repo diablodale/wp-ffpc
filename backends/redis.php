@@ -13,7 +13,7 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 
 		/* check for existing server list, otherwise we cannot add backends */
 		if ( empty ( $this->options['servers'] ) && ! $this->alive ) {
-			$this->log (  __translate__("Redis servers list is empty, init failed", $this->plugin_constant ), self::LOG_WARNING );
+			$this->log (  __translate__('Redis servers list is empty, init failed', $this->plugin_constant ), self::LOG_WARNING );
 			return false;
 		}
 
@@ -70,12 +70,12 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 	protected function _status () {
 		/* server status will be calculated by getting server stats */
 
-		$this->log (  __translate__("checking server status", $this->plugin_constant ));
+		$this->log (  __translate__('checking server status', $this->plugin_constant ));
 
 		try {
 			$info = $this->connection->ping();
 		} catch ( Exception $e ) {
-			$this->log (  __translate__("Exception occured: " . json_encode($e), $this->plugin_constant ));
+			$this->log (  __translate__('Exception occured: ' . json_encode($e), $this->plugin_constant ));
 		}
 
 		$status = empty( $info ) ? 0 : 1;

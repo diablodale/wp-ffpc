@@ -12,7 +12,7 @@ if ( !function_exists ('__translate__') ) {
 
 if ( !function_exists ('__debug__') ) {
 	/* __ only availabe if we're running from the inside of wordpress, not in advanced-cache.php phase */
-	function __debug__ ( $text ) {
+	function __debug__( $text ) {
 		if ( defined('WP_FFPC__DEBUG_MODE') && WP_FFPC__DEBUG_MODE == true)
 			error_log ( __FILE__ . ': ' . $text );
 	}
@@ -271,9 +271,9 @@ abstract class WP_FFPC_ABSTRACT {
 	public function plugin_admin_init() {
 		/* register setting link for the plugin page */
 		if ( static::$network_activated && static::$is_WP31_greater)
-			add_filter( "network_admin_plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
+			add_filter( 'network_admin_plugin_action_links_' . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 		else if (current_user_can( static::$capability_needed ))
-			add_filter( "plugin_action_links_" . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
+			add_filter( 'plugin_action_links_' . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 
 		/* load additional moves */
 		$this->plugin_extend_admin_init();		
@@ -308,8 +308,8 @@ abstract class WP_FFPC_ABSTRACT {
 	/* add admin styling */
 	public function enqueue_admin_css_js(){
 		/* jquery ui tabs is provided by WordPress */
-		wp_enqueue_script ( "jquery-ui-tabs", false, array('jquery', 'jquery-ui-core' ) );
-		wp_enqueue_script ( "jquery-ui-slider", false, array('jquery') );
+		wp_enqueue_script( 'jquery-ui-tabs', false, array('jquery', 'jquery-ui-core' ) );
+		wp_enqueue_script( 'jquery-ui-slider', false, array('jquery') );
 		/* additional admin styling */
 		wp_register_style( $this->admin_css_handle, $this->admin_css_url, false, $this->plugin_version, 'all' );
 		wp_enqueue_style( $this->admin_css_handle );
@@ -521,7 +521,7 @@ abstract class WP_FFPC_ABSTRACT {
 			jQuery(document).ready(function($) {
 				jQuery(function() {
 					if (!jQuery().slider) return;
-					var select = $( "#amount" );
+					var select = $( '#amount' );
 					var slider = $( '<div id="donation-slider"></div>' ).insertAfter( select ).slider({
 						min: 1,
 						max: 8,
@@ -531,15 +531,15 @@ abstract class WP_FFPC_ABSTRACT {
 							select[ 0 ].selectedIndex = ui.value - 1;
 						}
 					});
-					$( "#amount" ).change(function() {
-						slider.slider( "value", this.selectedIndex + 1 );
+					$( '#amount' ).change(function() {
+						slider.slider( 'value', this.selectedIndex + 1 );
 					});
 				});
 			});
 		</script>
 
 		<form action="https://www.paypal.com/cgi-bin/webscr" method="post" class="<?php echo $this->plugin_constant ?>-donation">
-			<label for="amount"><?php _e( "This plugin helped your business? I'd appreciate a coffee in return :) Please!", 'wp-ffpc'); ?></label>
+			<label for="amount"><?php _e( 'This plugin helped your business? I\'d appreciate a coffee in return :) Please!', 'wp-ffpc'); ?></label>
 			<select name="amount" id="amount">
 				<option value="3">3$</option>
 				<option value="5">5$</option>
@@ -626,24 +626,6 @@ abstract class WP_FFPC_ABSTRACT {
 			$url = get_blog_option ( $site, 'siteurl' );
 		else
 			$url = get_bloginfo ( 'url' );
-
-		return $url;
-	}
-
-	/**
-	 * replaces http:// with https:// in an url if server is currently running on https
-	 *
-	 * @param string $url URL to check
-	 *
-	 * @return string URL with correct protocol
-	 *
-	 */
-	public static function replace_if_ssl ( $url ) {
-		if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https' )
-			$_SERVER['HTTPS'] = 'on';
-
-		if ( isset($_SERVER['HTTPS']) && (( strtolower($_SERVER['HTTPS']) == 'on' )  || ( $_SERVER['HTTPS'] == '1' ) ))
-			$url = str_replace ( 'http://' , 'https://' , $url );
 
 		return $url;
 	}

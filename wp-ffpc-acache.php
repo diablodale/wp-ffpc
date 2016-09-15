@@ -5,7 +5,7 @@
 
 if ( !function_exists ('__debug__') ) {
 	/* __ only availabe if we're running from the inside of wordpress, not in advanced-cache.php phase */
-	function __debug__ ( $text ) {
+	function __debug__( $text ) {
 		if ( defined('WP_FFPC__DEBUG_MODE') && WP_FFPC__DEBUG_MODE == true)
 			error_log ( __FILE__ . ': ' . $text );
 	}
@@ -28,7 +28,7 @@ else {
 }
 
 /* no cache for post request (comments, plugins and so on) */
-if ($_SERVER["REQUEST_METHOD"] == 'POST')
+if ($_SERVER['REQUEST_METHOD'] == 'POST')
 	return false;
 
 /**
@@ -43,21 +43,21 @@ $wp_ffpc_uri = $_SERVER['REQUEST_URI'];
 
 /* no cache for robots.txt */
 if ( 0 === strcasecmp($wp_ffpc_uri, '/robots.txt') ) {
-	__debug__ ( 'Skippings robots.txt hit');
+	__debug__('Skippings robots.txt hit');
 	return false;
 }
 
 /* multisite legacy ms-files support can be too large for memcached */
 // https://codex.wordpress.org/Multisite_Network_Administration#Uploaded_File_Path
 if (is_multisite() && (0 === @substr_compare($_SERVER['SCRIPT_NAME'], '/ms-files.php', -13, 13, true))) {
-	__debug__ ( 'Skipping multisite legacy ms-files hit');
+	__debug__('Skipping multisite legacy ms-files hit');
 	return false;
 }
 
 /* no cache for uri with query strings, things usually go bad that way */
 // TODO reevaluate this because this causes the default WP setup (non-pretty links) and default wp-ffpc config will not cache
 if ( $wp_ffpc_config['nocache_dyn'] && (stripos($wp_ffpc_uri, '?') !== false) ) {
-	__debug__ ( 'Dynamic url cache is disabled ( url with "?" ), skipping');
+	__debug__('Dynamic url cache is disabled ( url with "?" ), skipping');
 	return false;
 }
 
@@ -67,9 +67,9 @@ if ( is_string($wp_ffpc_config['nocache_url']) ) {
 	$wp_ffpc_config['nocache_url'] = trim($wp_ffpc_config['nocache_url']);
 	if ('' !== $wp_ffpc_config['nocache_url']) {
 		// TODO consider switching delimiter to one of these |`^ because # is very common in URLs therefore more likely to be searched
-		$pattern = sprintf('#%s#i', $wp_ffpc_config['nocache_url']);
+		$pattern = "#{$wp_ffpc_config['nocache_url']}#i";
 		if ( 1 === preg_match($pattern, $wp_ffpc_uri) ) {
-			__debug__ ( "Cache exception based on URL regex pattern matched, skipping");
+			__debug__('Cache exception based on URL regex pattern matched, skipping');
 			return false;
 		}
 	}
@@ -89,7 +89,7 @@ if (!empty($_COOKIE)) {
 	if ( is_string($wp_ffpc_config['nocache_cookies']) ) {
 		// support legacy advanced-cache.php config files that saved this value as a string w/ commas instead of an array of strings
 		$wp_ffpc_config['nocache_cookies'] = array_filter(
-			array_map('trim', explode(",", $wp_ffpc_config['nocache_cookies'])),
+			array_map('trim', explode(',', $wp_ffpc_config['nocache_cookies'])),
 			function($value) {return $value !== '';} );
 	}
 	if ( is_array($wp_ffpc_config['nocache_cookies']) )
@@ -99,7 +99,7 @@ if (!empty($_COOKIE)) {
 	foreach ( $nocache_cookies as $single_nocache ) {
 		foreach ($_COOKIE as $n=>$v) {
 			if( strpos( $n, $single_nocache ) === 0 ) {
-				__debug__ ( "Cookie exception matched: $n, skipping");
+				__debug__("Cookie exception matched: $n, skipping");
 				return false;
 			}
 		}
@@ -119,7 +119,7 @@ $wp_ffpc_backend = new $backend_class ( $wp_ffpc_config );
 
 /* backend connection failed, no caching :( */
 if ( $wp_ffpc_backend->status() === false ) {
-	__debug__ ( "Backend offline, skipping");
+	__debug__('Backend offline, skipping');
 	return false;
 }
 
@@ -130,7 +130,7 @@ $wp_ffpc_redirect = null;
 $wp_ffpc_keys = array ( 'meta' => $wp_ffpc_config['prefix_meta'], 'data' => $wp_ffpc_config['prefix_data'] );
 $wp_ffpc_values = array();
 
-__debug__ ( "Trying to fetch entries");
+__debug__('Trying to fetch entries');
 
 foreach ( $wp_ffpc_keys as $internal => $key ) {
 	$key = $wp_ffpc_backend->key ( $key );
@@ -149,8 +149,8 @@ foreach ( $wp_ffpc_keys as $internal => $key ) {
 }
 
 /* serve cache 404 status */
-if ( isset( $wp_ffpc_values['meta']['status'] ) &&  $wp_ffpc_values['meta']['status'] == 404 ) {
-	header("HTTP/1.1 404 Not Found");
+if ( isset( $wp_ffpc_values['meta']['status'] ) &&  $wp_ffpc_values['meta']['status'] === 404 ) {
+	header('HTTP/1.1 404 Not Found');
 	/* if I kill the page serving here, the 404 page will not be showed at all, so we do not do that
 	 * flush();
 	 * die();
@@ -166,11 +166,11 @@ if ( isset( $wp_ffpc_values['meta']['redirect'] ) && $wp_ffpc_values['meta']['re
 }
 
 /* page is already cached on client side (chrome likes to do this, anyway, it's quite efficient) */
-if ( array_key_exists( "HTTP_IF_MODIFIED_SINCE" , $_SERVER ) && !empty( $wp_ffpc_values['meta']['lastmodified'] ) ) {
-	$if_modified_since = strtotime(preg_replace('/;.*$/', '', $_SERVER["HTTP_IF_MODIFIED_SINCE"]));
+if ( array_key_exists( 'HTTP_IF_MODIFIED_SINCE', $_SERVER ) && !empty( $wp_ffpc_values['meta']['lastmodified'] ) ) {
+	$if_modified_since = strtotime(preg_replace('/;.*$/', '', $_SERVER['HTTP_IF_MODIFIED_SINCE']));
 	/* check is cache is still valid */
 	if ( $if_modified_since >= $wp_ffpc_values['meta']['lastmodified'] ) {
-		header("HTTP/1.0 304 Not Modified");
+		header('HTTP/1.0 304 Not Modified');
 		/* connection cut for faster serving */
 		flush();
 		die();
@@ -203,13 +203,13 @@ if (isset($wp_ffpc_values['meta']['expire']) && !empty ( $wp_ffpc_values['meta']
 	}
 
 	header('Cache-Control: public,max-age='.$expire.',s-maxage='.$expire.',must-revalidate');
-	header('Expires: ' . gmdate("D, d M Y H:i:s", $wp_ffpc_values['meta']['expire'] ) . " GMT");
+	header('Expires: ' . gmdate('D, d M Y H:i:s', $wp_ffpc_values['meta']['expire'] ) . ' GMT');
 	header('ETag: '. $hash);
 	unset($expire, $hash);
 }
 else {
 	/* in case there is no expiry set, expire immediately and don't serve Etag; browser cache is disabled */
-	header('Expires: ' . gmdate("D, d M Y H:i:s", time() ) . " GMT");
+	header('Expires: ' . gmdate('D, d M Y H:i:s', time() ) . ' GMT');
 	/* if I set these, the 304 not modified will never, ever kick in, so not setting these
 	 * leaving here as a reminder why it should not be set */
 	//header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, s-maxage=0, post-check=0, pre-check=0');
@@ -222,7 +222,7 @@ if (isset($wp_ffpc_values['meta']['shortlink']) && !empty ( $wp_ffpc_values['met
 
 /* if last modifications were set (for posts & pages) */
 if (isset($wp_ffpc_values['meta']['lastmodified']) && !empty($wp_ffpc_values['meta']['lastmodified']) )
-	header( 'Last-Modified: ' . gmdate("D, d M Y H:i:s", $wp_ffpc_values['meta']['lastmodified'] ). " GMT" );
+	header( 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $wp_ffpc_values['meta']['lastmodified'] ). ' GMT' );
 
 /* pingback urls, if existx */
 if ( isset($wp_ffpc_values['meta']['pingback']) && !empty( $wp_ffpc_values['meta']['pingback'] ) && isset($wp_ffpc_config['pingback_header']) && $wp_ffpc_config['pingback_header'] )
@@ -310,10 +310,10 @@ function wp_ffpc_callback( $buffer ) {
 		// TODO trim() is only needed for legacy advanced-cache.php files saved/created with whitespace; can micro-optimize by removing the trim() and combining if tests
 		$wp_ffpc_config['nocache_comment'] = trim($wp_ffpc_config['nocache_comment']);
 		if ('' !== $wp_ffpc_config['nocache_comment']) {
-			$pattern = sprintf('#%s#', $wp_ffpc_config['nocache_comment']);
-			__debug__ ( sprintf("Testing comment with pattern: %s", $pattern));
+			$pattern = "#{$wp_ffpc_config['nocache_comment']}#";
+			__debug__("Testing comment with pattern: $pattern");
 			if ( preg_match($pattern, $buffer) ) {
-				__debug__ ( "Cache exception based on content regex pattern matched, skipping");
+				__debug__('Cache exception based on content regex pattern matched, skipping');
 				return $buffer;
 			}
 		}
@@ -455,12 +455,12 @@ function wp_ffpc_callback( $buffer ) {
 	$prefix_data = $wp_ffpc_backend->key ( $wp_ffpc_config['prefix_data'] );
 	$wp_ffpc_backend->set ( $prefix_data , $to_store );
 
-	if ( !empty( $meta['status'] ) && $meta['status'] == 404 ) {
-		header("HTTP/1.1 404 Not Found");
+	if ( isset($meta['status']) && ($meta['status'] === 404) ) {
+		header('HTTP/1.1 404 Not Found');
 	}
 	else {
 		/* vital for nginx, make no problem at other places */
-		header("HTTP/1.1 200 OK");
+		header('HTTP/1.1 200 OK');
 	}
 
 	/* echoes HTML out */
