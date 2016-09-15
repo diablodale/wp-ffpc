@@ -41,8 +41,8 @@ foreach ( $links as $permalink ) {
 	if (('http' !== $urlScheme) && ('https' !== $urlScheme))
 		continue;
 
-	$starttime = explode ( " ", microtime() );
-	$starttime = $starttime[1] + $starttime[0];
+	// crude substitute for a timing clock
+	$starttime = microtime(true);
 
 	$page = @file_get_contents( $permalink );
 	if (false === $page) {
@@ -52,8 +52,7 @@ foreach ( $links as $permalink ) {
 	}
 	else {
 		$size = round ( ( strlen ( $page ) / 1024 ), 2 );
-		$endtime = explode ( " ", microtime() );
-		$endtime = round( ( $endtime[1] + $endtime[0] ) - $starttime, 2 );
+		$endtime = round( microtime(true) - $starttime, 2 );
 	}
 	if ($logfile && (false === fwrite($logfile, $permalink . "\t" .  $endtime . "\t" . $size . "\n"))) {
 		@fclose($logfile);

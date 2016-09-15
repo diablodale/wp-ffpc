@@ -75,9 +75,6 @@ if ( is_string($wp_ffpc_config['nocache_url']) ) {
 	}
 }
 
-/* canonical redirect storage */
-$wp_ffpc_redirect = null;
-
 /* load backend storage codebase */
 include_once __DIR__ . '/wp-ffpc-backend.php';
 
@@ -109,9 +106,12 @@ if (!empty($_COOKIE)) {
 	}
 }
 
-/* used to later calculate cache retrieval time */
-$mtime = explode ( " ", microtime() );
-$wp_ffpc_gentime = $mtime[1] + $mtime[0];
+// crude clock for measuring page generation and cache retrieval time
+// - PHP has no stable timing clock https://blog.habets.se/2010/09/gettimeofday-should-never-be-used-to-measure-time
+// - PHP typically uses IEEE 754 doubles w/ ~14 decimal digits precision. 10 digits
+//   represent whole seconds from epoc, leaving only 4 digits (100s of microseconds) 
+// - more precision might be retained by gettimeofday() and optional module BCMath
+$wp_ffpc_gentime = microtime(true);
 
 /* fires up the backend storage array with current config */
 $backend_class = 'WP_FFPC_Backend_' . $wp_ffpc_config['cache_type'];
@@ -122,6 +122,9 @@ if ( $wp_ffpc_backend->status() === false ) {
 	__debug__ ( "Backend offline, skipping");
 	return false;
 }
+
+/* canonical redirect storage */
+$wp_ffpc_redirect = null;
 
 /* try to get data & meta keys for current page */
 $wp_ffpc_keys = array ( 'meta' => $wp_ffpc_config['prefix_meta'], 'data' => $wp_ffpc_config['prefix_data'] );
@@ -232,8 +235,7 @@ if ( isset($wp_ffpc_config['response_header']) && $wp_ffpc_config['response_head
 /* HTML data */
 // TODO the check for the closing body tag is weak, e.g. when the tag is written by script
 if ( isset($wp_ffpc_config['generate_time']) && $wp_ffpc_config['generate_time'] == '1' && stripos($wp_ffpc_values['data'], '</body>') ) {
-	$mtime = explode ( " ", microtime() );
-	$wp_ffpc_gentime = ( $mtime[1] + $mtime[0] ) - $wp_ffpc_gentime;
+	$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
 
 	$insertion = "\n<!-- WP-FFPC cache retrieval stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] . "\n\tcache response: " . round($wp_ffpc_gentime, 6) . " seconds\n\tUNIX timestamp: ". time() . "\n\tdate: ". date( 'c' ) . "\n\tvia web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
 	$index = stripos( $wp_ffpc_values['data'] , '</body>' );
@@ -257,10 +259,9 @@ die();
 function wp_ffpc_start( ) {
 	/* set start time */
 	global $wp_ffpc_gentime;
-	$mtime = explode ( " ", microtime() );
-	$wp_ffpc_gentime = $mtime[1] + $mtime[0];
+	$wp_ffpc_gentime = microtime(true);
 
-	/* start object "colleting" and pass it the the actual storer function  */
+	/* start output buffering and pass it the actual storer function as a callback */
 	ob_start('wp_ffpc_callback');
 }
 
@@ -440,8 +441,7 @@ function wp_ffpc_callback( $buffer ) {
 	/* add generation info is option is set, but only to HTML */
 	if ( $wp_ffpc_config['generate_time'] == '1' && stripos($buffer, '</body>') ) {
 		global $wp_ffpc_gentime;
-		$mtime = explode ( " ", microtime() );
-		$wp_ffpc_gentime = ( $mtime[1] + $mtime[0] )- $wp_ffpc_gentime;
+		$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
 
 		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
 		$index = stripos( $buffer , '</body>' );
