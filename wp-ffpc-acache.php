@@ -75,8 +75,8 @@ if ( is_string($wp_ffpc_config['nocache_url']) ) {
 	}
 }
 
-/* load backend storage codebase */
-include_once __DIR__ . '/wp-ffpc-backend.php';
+/* load backend cache storage codebase */
+require_once __DIR__ . '/wp-ffpc-backend.php';
 
 // check for cookies that will make us not cache the content
 if (!empty($_COOKIE)) {
@@ -196,12 +196,15 @@ if ( !empty( $wp_ffpc_values['meta']['expire']) ) {
 			$expire = $wp_ffpc_config['browsercache_taxonomy'];
 			break;
 		case 'single':
+		case 'page':
 			$expire = $wp_ffpc_config['browsercache'];
 			break;
 		default:
 			$expire = 0;
 	}
 
+	// BUGBUG re-evaluate the cache-control header because max-age here will not match the expire stored in meta
+	// https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.3
 	header('Cache-Control: public,max-age='.$expire.',s-maxage='.$expire.',must-revalidate');
 	header('Expires: ' . gmdate('D, d M Y H:i:s', $wp_ffpc_values['meta']['expire'] ) . ' GMT');
 	header('ETag: '. $hash);
@@ -210,7 +213,7 @@ if ( !empty( $wp_ffpc_values['meta']['expire']) ) {
 else {
 	/* in case there is no expiry set, expire immediately and don't serve Etag; browser cache is disabled */
 	header('Expires: ' . gmdate('D, d M Y H:i:s', time() ) . ' GMT');
-	/* BUGBUG if I set these, the 304 not modified will never, ever kick in, so not setting these
+	/* BUGBUG past dev wrote if the two below are set, the 304 not modified will never, ever kick in, so not setting these
 	 * leaving here as a reminder why it should not be set */
 	//header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, s-maxage=0, post-check=0, pre-check=0');
 	//header('Pragma: no-cache');
@@ -236,11 +239,10 @@ if ( !empty($wp_ffpc_config['response_header']) )
 if ( !empty($wp_ffpc_config['generate_time']) ) {
 	$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
 	$insertion = "\n<!-- WP-FFPC cache retrieval stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] . "\n\tcache response: " . round($wp_ffpc_gentime, 6) . " seconds\n\tretrieval UNIX timestamp: ". time() . "\n\tretrieval date: ". date( 'c' ) . "\n\tretrieval via web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
-	// TODO the check for the closing body tag is weak, e.g. when the tag is written by script
-	// also consider if strripos() and a negative offset will be faster
+	// TODO the check for the closing body tag is weak, e.g. when the tag is written by script; also consider if strripos() and a negative offset will be faster
 	$index = stripos($wp_ffpc_values['data'], '</body>');
 	if (false !== $index)
-		$wp_ffpc_values['data'] = substr_replace( $wp_ffpc_values['data'], $insertion, $index, 0);
+		$wp_ffpc_values['data'] = substr_replace( $wp_ffpc_values['data'], $insertion, $index, 0 );
 	//else
 	//	$wp_ffpc_values['data'] .= $insertion;
 }
@@ -321,20 +323,44 @@ function wp_ffpc_callback( $buffer ) {
 		}
 	}
 
-	/* reset meta to solve conflicts */
+	// get type for content 
 	$meta = array();
-	if ( is_home() || is_feed() ) {
-		if (is_home())
-			$meta['type'] = 'home';
-		elseif(is_feed())
-			$meta['type'] = 'feed';
+	if ( is_home() )
+		$meta['type'] = 'home';
+	elseif ( is_feed() )
+		$meta['type'] = 'feed';
+	elseif ( is_archive())
+		$meta['type'] = 'archive';
+	elseif ( is_single() )
+		// BUGBUG there is a bug in v1.10.1 related to this, is_singular() and pages because the legacy code has a page checkbox on the options page that did nothing 
+		$meta['type'] = 'single';
+	elseif ( is_page() )
+		$meta['type'] = 'page';
+	else
+		// TODO consider adding custom post type support, e.g. http://wordpress.stackexchange.com/questions/6731/if-is-custom-post-type
+		$meta['type'] = 'unknown';
 
-		if (isset($wp_ffpc_config['browsercache_home']) && !empty($wp_ffpc_config['browsercache_home']) && $wp_ffpc_config['browsercache_home'] > 0) {
+	// don't cache page type if prevented by selected option
+	if ( !empty($wp_ffpc_config['nocache_'. $meta['type']]) ) {
+		return $buffer;
+	}
+
+	// set mimetype and character set
+	if ( 'feed' === $meta['type'] )
+		$meta['mime'] = "text/xml;charset={$wp_ffpc_config['charset']}";
+	else
+		$meta['mime'] = "text/html;charset={$wp_ffpc_config['charset']}";
+
+	/* reset meta to solve conflicts */
+	switch ($meta['type']) {
+	case 'home':
+	case 'feed':
+		if (!empty($wp_ffpc_config['browsercache_home'])) {
 			$meta['expire'] = time() + $wp_ffpc_config['browsercache_home'];
 		}
 
-		__debug__( 'Getting latest post for for home & feed');
 		/* get newest post and set last modified accordingly */
+		__debug__( 'Getting latest post for home & feed');
 		$args = array(
 			'numberposts' => 1,
 			'orderby' => 'modified',
@@ -346,22 +372,18 @@ function wp_ffpc_callback( $buffer ) {
 		if ( !empty($recent_post)) {
 			$recent_post = array_pop($recent_post);
 			if (!empty ( $recent_post->post_modified_gmt ) ) {
-				$meta['lastmodified'] = strtotime ( $recent_post->post_modified_gmt );
+				$meta['lastmodified'] = strtotime( $recent_post->post_modified_gmt );
 			}
 		}
-
-	}
-	elseif ( is_archive() ) {
-		$meta['type'] = 'archive';
-		if (isset($wp_ffpc_config['browsercache_taxonomy']) && !empty($wp_ffpc_config['browsercache_taxonomy']) && $wp_ffpc_config['browsercache_taxonomy'] > 0) {
+		break;
+	case 'archive':
+		if (!empty($wp_ffpc_config['browsercache_taxonomy'])) {
 			$meta['expire'] = time() + $wp_ffpc_config['browsercache_taxonomy'];
 		}
 
 		global $wp_query;
-
 		if ( null != $wp_query->tax_query && !empty($wp_query->tax_query)) {
 			__debug__( 'Getting latest post for taxonomy: ' . json_encode($wp_query->tax_query));
-
 			$args = array(
 				'numberposts' => 1,
 				'orderby' => 'modified',
@@ -370,94 +392,37 @@ function wp_ffpc_callback( $buffer ) {
 				'tax_query' => $wp_query->tax_query,
 			);
 
-			$recent_post =  get_posts( $args, OBJECT );
-
+			$recent_post = get_posts( $args, OBJECT );
 			if ( !empty($recent_post)) {
 				$recent_post = array_pop($recent_post);
 				if (!empty ( $recent_post->post_modified_gmt ) ) {
-					$meta['lastmodified'] = strtotime ( $recent_post->post_modified_gmt );
+					$meta['lastmodified'] = strtotime( $recent_post->post_modified_gmt );
 				}
 			}
 		}
-
-	}
-	elseif ( is_single() || is_page() ) {
-		$meta['type'] = 'single';
-		if (isset($wp_ffpc_config['browsercache']) && !empty($wp_ffpc_config['browsercache']) && $wp_ffpc_config['browsercache'] > 0) {
+		break;
+	case 'single':
+	case 'page':
+		if (!empty($wp_ffpc_config['browsercache'])) {
 			$meta['expire'] = time() + $wp_ffpc_config['browsercache'];
 		}
 
-		/* try if post is available
-			if made with archieve, last listed post can make this go bad
-		*/
+		// try if post is available
+		// BUGBUG if made with archive, last listed post can make this go bad
 		global $post;
-		if ( !empty($post) && !empty ( $post->post_modified_gmt ) ) {
+		if ( !empty($post) && !empty( $post->post_modified_gmt ) ) {
 			/* get last modification data */
-			$meta['lastmodified'] = strtotime ( $post->post_modified_gmt );
+			$meta['lastmodified'] = strtotime( $post->post_modified_gmt );
 
-			/* get shortlink, if possible */
-			if (function_exists('wp_get_shortlink')) {
-				$shortlink = wp_get_shortlink( );
-				if (!empty ( $shortlink ) )
-					$meta['shortlink'] = $shortlink;
-			}
-		}
-
-	}
-	else {
-		$meta['type'] = 'unknown';
-	}
-
-	if ( $meta['type'] != 'unknown' ) {
-		/* check if caching is disabled for page type */
-		$nocache_key = 'nocache_'. $meta['type'];
-
-		/* don't cache if prevented by rule */
-		if ( $wp_ffpc_config[ $nocache_key ] == 1 ) {
-			return $buffer;
+			/* get shortlink */
+			$shortlink = wp_get_shortlink();
+			if ( !empty($shortlink) )
+				$meta['shortlink'] = $shortlink;
 		}
 	}
 
-	if ( is_404() )
+	if (is_404()) {
 		$meta['status'] = 404;
-
-	/* redirect page */
-	if ( $wp_ffpc_redirect != null)
-		$meta['redirect'] =  $wp_ffpc_redirect;
-
-	/* feed is xml, all others forced to be HTML */
-	if ( is_feed() )
-		$meta['mime'] = 'text/xml;charset=';
-	else
-		$meta['mime'] = 'text/html;charset=';
-
-	/* set mimetype */
-	$meta['mime'] = $meta['mime'] . $wp_ffpc_config['charset'];
-
-	/* store pingback url if pingbacks are enabled */
-	if ( get_option ( 'default_ping_status' ) == 'open' )
-		$meta['pingback'] = get_bloginfo('pingback_url');
-
-	$to_store = $buffer;
-
-	/* add generation info is option is set, but only to HTML */
-	if ( $wp_ffpc_config['generate_time'] == '1' && stripos($buffer, '</body>') ) {
-		global $wp_ffpc_gentime;
-		$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
-
-		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration via web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
-		$index = stripos( $buffer , '</body>' );
-
-		$to_store = substr_replace( $buffer, $insertion, $index, 0);
-	}
-
-	$prefix_meta = $wp_ffpc_backend->key ( $wp_ffpc_config['prefix_meta'] );
-	$wp_ffpc_backend->set( $prefix_meta, $meta );
-
-	$prefix_data = $wp_ffpc_backend->key ( $wp_ffpc_config['prefix_data'] );
-	$wp_ffpc_backend->set( $prefix_data , $to_store );
-
-	if ( isset($meta['status']) && ($meta['status'] === 404) ) {
 		header('HTTP/1.1 404 Not Found');
 	}
 	else {
@@ -465,8 +430,34 @@ function wp_ffpc_callback( $buffer ) {
 		header('HTTP/1.1 200 OK');
 	}
 
+	/* redirect page */
+	if ( $wp_ffpc_redirect != null)
+		$meta['redirect'] = $wp_ffpc_redirect;
+
+	/* store pingback url if pingbacks are enabled */
+	if ( get_option ( 'default_ping_status' ) === 'open' )
+		$meta['pingback'] = get_bloginfo('pingback_url');
+
+	/* add generation info is option is set, but only to HTML */
+	if ( !empty($wp_ffpc_config['generate_time']) ) {
+		global $wp_ffpc_gentime;
+		$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
+		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration via web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
+		// TODO the check for the closing body tag is weak, e.g. when the tag is written by script; also consider if strripos() and a negative offset will be faster
+		$index = stripos($buffer, '</body>');
+		if (false !== $index)
+			$buffer = substr_replace( $buffer, $insertion, $index, 0 );
+		//else
+		//	$buffer .= $insertion;
+	}
+
+	$prefix_meta = $wp_ffpc_backend->key( $wp_ffpc_config['prefix_meta'] );
+	$wp_ffpc_backend->set( $prefix_meta, $meta );
+
+	$prefix_data = $wp_ffpc_backend->key( $wp_ffpc_config['prefix_data'] );
+	$wp_ffpc_backend->set( $prefix_data , $buffer );
+
 	/* echoes HTML out */
-	// TODO examine the logic to return only $buffer rather than $to_store; why skip the optional generation stats on the 1st serve?
 	return $buffer;
 }
 /*** END GENERATING CACHE ENTRY ***/

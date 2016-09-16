@@ -204,6 +204,7 @@ abstract class WP_FFPC_Backend {
 
 		/* expiration time is optional parameter value or based on type */
 		// BUGBUG empty() logic is inconsistent below
+		// BUGBUG using is_home() functions here is poor style and descreases perf; the expire should be passed into this function
 		if ( false === $expire ) {
 			if (( is_home() || is_feed() ) && isset($this->options['expire_home']))
 				$expire = (int) $this->options['expire_home'];
@@ -291,6 +292,9 @@ abstract class WP_FFPC_Backend {
 		if ( !empty ( $post_id ) ) {
 
 			/* need permalink functions */
+			// BUGBUG this is unusual because we use many core WP functions above yet don't 
+			// test for them nor do includes; the chance that get_option() works above yet
+			// get_permalink() doesn't work is almost zero
 			if ( !function_exists('get_permalink') )
 				include_once ABSPATH . 'wp-includes/link-template.php';
 

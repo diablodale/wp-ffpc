@@ -376,7 +376,8 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param boolean $activating [optional] true on activation hook
 	 *
 	 */
-	// TODO make config store an array for nocache_cookies because string parsing, array create, etc. is very expensive to do on every request
+	// TODO make config store an array for nocache_cookies because string parsing, array create, etc. is very expensive to do on every cache request
+	// and add validation like expire and TTL values should be numbers which are zero or greater
 	protected function plugin_options_save ( $activating = false ) {
 
 		/* only try to update defaults if it's not activation hook, $_POST is not empty and the post is ours */
