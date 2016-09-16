@@ -163,7 +163,9 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		$backend_class = 'WP_FFPC_Backend_' . $this->options['cache_type'];
 		$this->backend = new $backend_class ( $this->options );
 
-		/* re-save settings after update */
+		// re-save settings after update, hook upgrader_process_complete only on WP 3.6+
+		// TODO perhaps switch to upgrader_post_install filter as a hack for WP < 3.6
+		// e.g. add_filter('upgrader_post_install', array($this, 'check_parent_theme_filter'), 10, 3);
 		add_action( 'upgrader_process_complete', array ( &$this->plugin_upgrade ), 10, 2 );
 
 		/* cache invalidation hooks */
@@ -254,6 +256,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_upgrade ( $upgrader_object, $hook_extra ) {
 		if (is_plugin_active( $this->plugin_constant . DIRECTORY_SEPARATOR . $this->plugin_constant . '.php' )) {
+			//BUGBUG need to opcache_invalidate() all php files in the plugin's folder(s), or could have errors with old cached code mixing with new code
 			$this->update_global_config();
 			$this->plugin_options_save();
 			$this->deploy_advanced_cache();

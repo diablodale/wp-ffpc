@@ -379,8 +379,7 @@ abstract class WP_FFPC_ABSTRACT {
 	// TODO make config store an array for nocache_cookies because string parsing, array create, etc. is very expensive to do on every request
 	protected function plugin_options_save ( $activating = false ) {
 
-		/* only try to update defaults if it's not activation hook, $_POST is not empty and the post
-		   is ours */
+		/* only try to update defaults if it's not activation hook, $_POST is not empty and the post is ours */
 		if ( !$activating && !empty ( $_POST ) && isset( $_POST[ $this->button_save ] ) ) {
 			/* we'll only update those that exist in the defaults array */
 			$options = $this->defaults;
@@ -404,10 +403,10 @@ abstract class WP_FFPC_ABSTRACT {
 				   if this is the situation by checking the types of the elements,
 				   since a missing value means update from an integer to 0
 				*/
-				elseif ( empty( $_POST[$key] ) && ( is_bool ( $default ) || is_int( $default ) ) ) {
+				elseif ( is_bool( $default ) || is_int($default) ) {
 					$options[$key] = 0;
 				}
-				elseif ( empty( $_POST[$key] ) && is_array( $default) ) {
+				elseif ( is_array($default) ) {
 					$options[$key] = array();
 				}
 			}

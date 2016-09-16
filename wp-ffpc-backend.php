@@ -197,19 +197,21 @@ abstract class WP_FFPC_Backend {
 	 */
 	public function set ( &$key, &$data, $expire = false ) {
 		/* look for backend aliveness, exit on inactive backend */
+		// TODO re-evaluate this alive check. Doing it causes a 2x increase in cache traffic isalive() + set()
+		// it might be better to just do a set() since they both will return false
 		if ( ! $this->is_alive() )
 			return false;
 
-		/* expiration time based is based on type from now on */
-		/* fallback */
-		// BUGBUG this if logic needs to be refactored to remove duplicate work
-		if ( $expire === false )
-			$expire = empty ( $this->options['expire'] ) ? 0 : $this->options['expire'];
-
-		if (( is_home() || is_feed() ) && isset($this->options['expire_home']))
-			$expire = (int) $this->options['expire_home'];
-		elseif (( is_tax() || is_category() || is_tag() || is_archive() ) && isset($this->options['expire_taxonomy']))
-			$expire = (int) $this->options['expire_taxonomy'];
+		/* expiration time is optional parameter value or based on type */
+		// BUGBUG empty() logic is inconsistent below
+		if ( false === $expire ) {
+			if (( is_home() || is_feed() ) && isset($this->options['expire_home']))
+				$expire = (int) $this->options['expire_home'];
+			elseif (( is_tax() || is_category() || is_tag() || is_archive() ) && isset($this->options['expire_taxonomy']))
+				$expire = (int) $this->options['expire_taxonomy'];
+			else
+				$expire = empty ( $this->options['expire'] ) ? 0 : $this->options['expire'];
+		}
 
 		/* log the current action */
 		$this->log( __translate__("set entry: $key expire: $expire", 'wp-ffpc') );

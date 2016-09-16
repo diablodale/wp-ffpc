@@ -149,7 +149,7 @@ foreach ( $wp_ffpc_keys as $internal => $key ) {
 }
 
 /* serve cache 404 status */
-if ( isset( $wp_ffpc_values['meta']['status'] ) &&  $wp_ffpc_values['meta']['status'] === 404 ) {
+if ( isset($wp_ffpc_values['meta']['status']) && ($wp_ffpc_values['meta']['status'] === 404) ) {
 	header('HTTP/1.1 404 Not Found');
 	/* if I kill the page serving here, the 404 page will not be showed at all, so we do not do that
 	 * flush();
@@ -158,7 +158,7 @@ if ( isset( $wp_ffpc_values['meta']['status'] ) &&  $wp_ffpc_values['meta']['sta
 }
 
 /* server redirect cache */
-if ( isset( $wp_ffpc_values['meta']['redirect'] ) && $wp_ffpc_values['meta']['redirect'] ) {
+if ( !empty($wp_ffpc_values['meta']['redirect']) ) {
 	header('Location: ' . $wp_ffpc_values['meta']['redirect'] );
 	/* cut the connection as fast as possible */
 	flush();
@@ -180,11 +180,11 @@ if ( array_key_exists( 'HTTP_IF_MODIFIED_SINCE', $_SERVER ) && !empty( $wp_ffpc_
 /*** SERVING CACHED PAGE ***/
 
 /* if we reach this point it means data was found & correct, serve it */
-if (!empty ( $wp_ffpc_values['meta']['mime'] ) )
+if ( !empty($wp_ffpc_values['meta']['mime']) )
 	header('Content-Type: ' . $wp_ffpc_values['meta']['mime']);
 
 /* set expiry date */
-if (isset($wp_ffpc_values['meta']['expire']) && !empty ( $wp_ffpc_values['meta']['expire'] ) ) {
+if ( !empty( $wp_ffpc_values['meta']['expire']) ) {
 	$hash = md5 ( $wp_ffpc_uri . $wp_ffpc_values['meta']['expire'] );
 
 	switch ($wp_ffpc_values['meta']['type']) {
@@ -210,37 +210,39 @@ if (isset($wp_ffpc_values['meta']['expire']) && !empty ( $wp_ffpc_values['meta']
 else {
 	/* in case there is no expiry set, expire immediately and don't serve Etag; browser cache is disabled */
 	header('Expires: ' . gmdate('D, d M Y H:i:s', time() ) . ' GMT');
-	/* if I set these, the 304 not modified will never, ever kick in, so not setting these
+	/* BUGBUG if I set these, the 304 not modified will never, ever kick in, so not setting these
 	 * leaving here as a reminder why it should not be set */
 	//header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0, s-maxage=0, post-check=0, pre-check=0');
 	//header('Pragma: no-cache');
 }
 
-/* if shortlinks were set */
-if (isset($wp_ffpc_values['meta']['shortlink']) && !empty ( $wp_ffpc_values['meta']['shortlink'] ) )
+/* write out shortlink if set; guaranteed to be !empty() because that test was done before storing shortlink metadata in cache */
+if (isset($wp_ffpc_values['meta']['shortlink']))
 	header( 'Link:<'. $wp_ffpc_values['meta']['shortlink'] .'>; rel=shortlink' );
 
-/* if last modifications were set (for posts & pages) */
-if (isset($wp_ffpc_values['meta']['lastmodified']) && !empty($wp_ffpc_values['meta']['lastmodified']) )
+/* write out last modifications if set (for posts & pages) */
+if (!empty($wp_ffpc_values['meta']['lastmodified']))
 	header( 'Last-Modified: ' . gmdate('D, d M Y H:i:s', $wp_ffpc_values['meta']['lastmodified'] ). ' GMT' );
 
-/* pingback urls, if existx */
-if ( isset($wp_ffpc_values['meta']['pingback']) && !empty( $wp_ffpc_values['meta']['pingback'] ) && isset($wp_ffpc_config['pingback_header']) && $wp_ffpc_config['pingback_header'] )
+/* write out pingback urls, if set */
+if ( !empty($wp_ffpc_values['meta']['pingback']) && !empty($wp_ffpc_config['pingback_header']) )
 	header( 'X-Pingback: ' . $wp_ffpc_values['meta']['pingback'] );
 
-/* for debugging */
-if ( isset($wp_ffpc_config['response_header']) && $wp_ffpc_config['response_header'] )
+/* write out header to identify wp-ffpc as the cache; used for debugging */
+if ( !empty($wp_ffpc_config['response_header']) )
 	header( 'X-Cache-Engine: WP-FFPC with ' . $wp_ffpc_config['cache_type'] .' via PHP');
 
-/* HTML data */
-// TODO the check for the closing body tag is weak, e.g. when the tag is written by script
-if ( isset($wp_ffpc_config['generate_time']) && $wp_ffpc_config['generate_time'] == '1' && stripos($wp_ffpc_values['data'], '</body>') ) {
+/* write out HTML debug comment, if set */
+if ( !empty($wp_ffpc_config['generate_time']) ) {
 	$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
-
-	$insertion = "\n<!-- WP-FFPC cache retrieval stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] . "\n\tcache response: " . round($wp_ffpc_gentime, 6) . " seconds\n\tUNIX timestamp: ". time() . "\n\tdate: ". date( 'c' ) . "\n\tvia web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
-	$index = stripos( $wp_ffpc_values['data'] , '</body>' );
-
-	$wp_ffpc_values['data'] = substr_replace( $wp_ffpc_values['data'], $insertion, $index, 0);
+	$insertion = "\n<!-- WP-FFPC cache retrieval stats\n\tcache engine: ". $wp_ffpc_config['cache_type'] . "\n\tcache response: " . round($wp_ffpc_gentime, 6) . " seconds\n\tretrieval UNIX timestamp: ". time() . "\n\tretrieval date: ". date( 'c' ) . "\n\tretrieval via web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
+	// TODO the check for the closing body tag is weak, e.g. when the tag is written by script
+	// also consider if strripos() and a negative offset will be faster
+	$index = stripos($wp_ffpc_values['data'], '</body>');
+	if (false !== $index)
+		$wp_ffpc_values['data'] = substr_replace( $wp_ffpc_values['data'], $insertion, $index, 0);
+	//else
+	//	$wp_ffpc_values['data'] .= $insertion;
 }
 
 echo $wp_ffpc_values['data'];
@@ -443,17 +445,17 @@ function wp_ffpc_callback( $buffer ) {
 		global $wp_ffpc_gentime;
 		$wp_ffpc_gentime = microtime(true) - $wp_ffpc_gentime;
 
-		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
+		$insertion = "\n<!-- WP-FFPC content generation stats" . "\n\tgeneration time: ". round( $wp_ffpc_gentime, 3 ) ." seconds\n\tgeneration UNIX timestamp: ". time() . "\n\tgeneration date: ". date( 'c' ) . "\n\tgeneration via web server: ". $_SERVER['SERVER_ADDR'] . " -->\n";
 		$index = stripos( $buffer , '</body>' );
 
 		$to_store = substr_replace( $buffer, $insertion, $index, 0);
 	}
 
 	$prefix_meta = $wp_ffpc_backend->key ( $wp_ffpc_config['prefix_meta'] );
-	$wp_ffpc_backend->set ( $prefix_meta, $meta );
+	$wp_ffpc_backend->set( $prefix_meta, $meta );
 
 	$prefix_data = $wp_ffpc_backend->key ( $wp_ffpc_config['prefix_data'] );
-	$wp_ffpc_backend->set ( $prefix_data , $to_store );
+	$wp_ffpc_backend->set( $prefix_data , $to_store );
 
 	if ( isset($meta['status']) && ($meta['status'] === 404) ) {
 		header('HTTP/1.1 404 Not Found');
