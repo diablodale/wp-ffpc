@@ -330,9 +330,6 @@ abstract class WP_FFPC_Backend {
 			} while ($number_of_pages>1 && $current_page_id<=$number_of_pages);
 		}
 
-		/* Hook to custom clearing array. */
-		$to_clear = apply_filters('wp_ffpc_to_clear_array', $to_clear, $post_id);
-
 		/* run clear */
 		$this->clear_keys( $to_clear );
 	}
@@ -342,6 +339,7 @@ abstract class WP_FFPC_Backend {
 	 * @param array $keys
 	 */
 	public function clear_keys( $keys ) {
+		// filter hook used by other plugins like WP-FFPC-Purge https://github.com/zeroturnaround/wp-ffpc-purge
 		$to_clear = apply_filters('wp_ffpc_clear_keys_array', $keys, $this->options);
 		$this->_clear ( $to_clear );
 	}

@@ -5,7 +5,7 @@ if (!class_exists('WP_FFPC_Backend_redis')):
 class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 
 	protected function _init () {
-		/* Memcached class does not exist, Memcached extension is not available */
+		/* Redis class does not exist, Redis extension is not available */
 		if (!class_exists('Redis')) {
 			$this->log (  __translate__('Redis extension missing, wp-ffpc will not be able to function correctly!', $this->plugin_constant ), self::LOG_WARNING );
 			return false;

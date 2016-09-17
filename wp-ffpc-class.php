@@ -874,7 +874,10 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			<?php } ?>
 			</fieldset>
 
-			<?php do_action('wp_ffpc_admin_panel_tabs_extra_content', 'wp-ffpc'); ?>
+			<?php
+				// action hook used by some other plugins like WP-FFPC-Purge https://github.com/zeroturnaround/wp-ffpc-purge
+				do_action('wp_ffpc_admin_panel_tabs_extra_content', 'wp-ffpc');
+			?>
 
 			<p class="clear">
 				<input class="button-primary" type="submit" name="<?php echo $this->button_save ?>" id="<?php echo $this->button_save ?>" value="<?php _e('Save Changes', 'wp-ffpc') ?>" />
@@ -941,7 +944,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			'servers' => __( 'Backend settings', 'wp-ffpc'),
 			'precachelog' => __( 'Precache & precache log', 'wp-ffpc')
 		);
-
+		// filter hook used by some other plugins like WP-FFPC-Purge https://github.com/zeroturnaround/wp-ffpc-purge
 		return apply_filters('wp_ffpc_admin_panel_tabs', $default_tabs);
 	}
 
