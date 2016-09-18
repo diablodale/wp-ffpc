@@ -18,15 +18,6 @@ if ( !function_exists ('__debug__') ) {
 	}
 }
 
-// Workaround for Wordpress 3.0
-if ( !function_exists('get_current_blog_id') )
-{
-	function get_current_blog_id() {
-		global $blog_id;
-		return absint($blog_id);
-	}
-}
-
 if (!class_exists('WP_FFPC_ABSTRACT')):
 
 /**
@@ -48,7 +39,6 @@ abstract class WP_FFPC_ABSTRACT {
 	protected $defaults = array();
 	protected static $network_activated = false;
 	protected static $capability_needed = 'manage_options';
-	protected static $is_WP31_greater = true;
 	protected $settings_link = '';
 	protected $settings_slug = '';
 	protected $settings_page_hook_suffix = false;
@@ -100,17 +90,12 @@ abstract class WP_FFPC_ABSTRACT {
 		$this->button_precache = $this->plugin_constant . '-precache';
 
 
-		if ( !empty( $donation_business_name ) &&  !empty( $donation_item_name ) && !empty( $donation_business_id ) ) {
+		if ( !empty( $donation_business_name ) && !empty( $donation_item_name ) && !empty( $donation_business_id ) ) {
 			$this->donation_business_name = $donation_business_name;
 			$this->donation_item_name = $donation_item_name;
 			$this->donation_business_id = $donation_business_id;
 			$this->donation = true;
 		}
-
-		// boolean flag for WP 3.1 or greater (used for WP 3.0 workarounds)
-		global $wp_version;
-		if ( version_compare($wp_version, '3.1', '<') )
-			static::$is_WP31_greater = false;
 
 		/* we need network wide plugin check functions */
 		if ( ! function_exists( 'is_plugin_active_for_network' ) )
@@ -120,10 +105,7 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( is_plugin_active_for_network ( $this->plugin_file ) ) {
 			static::$network_activated = true;
 			static::$capability_needed = 'manage_network_options';
-			if (static::$is_WP31_greater)
-				$this->settings_slug = 'settings.php';
-			else
-				$this->settings_slug = 'ms-admin.php';
+			$this->settings_slug = 'settings.php';
 		}
 		else {
 			$this->settings_slug = 'options-general.php';
@@ -151,6 +133,11 @@ abstract class WP_FFPC_ABSTRACT {
 		if (version_compare(PHP_VERSION, '5.3.0', '<')) {
 			deactivate_plugins( $this->plugin_file );
 			wp_die( $this->plugin_name . __(' plugin requires PHP version 5.3 or newer. The activation has been cancelled.', 'wp-ffpc') );
+		}
+		global $wp_version;
+		if ( version_compare($wp_version, '3.1', '<') ) {
+			deactivate_plugins( $this->plugin_file );
+			wp_die( $this->plugin_name . __(' plugin requires Wordpress 3.1 or newer. The activation has been cancelled.', 'wp-ffpc') );
 		}
 	}
 
@@ -188,7 +175,7 @@ abstract class WP_FFPC_ABSTRACT {
 		if ( is_admin() ) {
 			add_action( 'admin_init', array(&$this,'plugin_admin_init'));
 			/* register to add submenu to admin menu */
-			if ( static::$network_activated && static::$is_WP31_greater)
+			if ( static::$network_activated )
 				add_action('network_admin_menu', array( &$this , 'plugin_admin_menu') );
 			else
 				add_action('admin_menu', array( &$this , 'plugin_admin_menu') );
@@ -270,7 +257,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	public function plugin_admin_init() {
 		/* register setting link for the plugin page */
-		if ( static::$network_activated && static::$is_WP31_greater)
+		if ( static::$network_activated )
 			add_filter( 'network_admin_plugin_action_links_' . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
 		else if (current_user_can( static::$capability_needed ))
 			add_filter( 'plugin_action_links_' . $this->plugin_file, array( &$this, 'plugin_settings_link' ) );
@@ -745,6 +732,49 @@ abstract class WP_FFPC_ABSTRACT {
 		default:
 			return $inival;
 		}
+	}
+
+	// copied from WP 4.6 because WP 3.6 and earlier versions had poor logic and bugs
+	static protected function win_is_writable( $path ) {
+	        if ( $path[strlen( $path ) - 1] == '/' ) { // if it looks like a directory, check a random file within the directory
+	                return static::win_is_writable( $path . uniqid( mt_rand() ) . '.tmp');
+	        } elseif ( is_dir( $path ) ) { // If it's a directory (and not a file) check a random file within the directory
+	                return static::win_is_writable( $path . '/' . uniqid( mt_rand() ) . '.tmp' );
+	        }
+	        // check tmp file for read/write capabilities
+	        $should_delete_tmp_file = !file_exists( $path );
+	        $f = @fopen( $path, 'a' );
+	        if ( $f === false )
+	                return false;
+	        fclose( $f );
+	        if ( $should_delete_tmp_file )
+	                unlink( $path );
+	        return true;
+	}
+	static protected function wp_is_writable( $path ) {
+    if ( 'WIN' === strtoupper( substr( PHP_OS, 0, 3 ) ) )
+        return static::win_is_writable( $path );
+    else
+        return @is_writable( $path );
+	}
+	static protected function get_temp_dir() {
+		static $temp = '';
+		if ( defined('WP_TEMP_DIR') )
+				return trailingslashit(WP_TEMP_DIR);
+		if ( $temp )
+				return trailingslashit( $temp );
+		if ( function_exists('sys_get_temp_dir') ) {
+				$temp = sys_get_temp_dir();
+				if ( @is_dir( $temp ) && static::wp_is_writable( $temp ) )
+						return trailingslashit( $temp );
+		}
+		$temp = ini_get('upload_tmp_dir');
+		if ( @is_dir( $temp ) && static::wp_is_writable( $temp ) )
+				return trailingslashit( $temp );
+		$temp = WP_CONTENT_DIR . '/';
+		if ( is_dir( $temp ) && static::wp_is_writable( $temp ) )
+				return $temp;
+		return '/tmp/';
 	}
 
 }

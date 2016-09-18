@@ -1,10 +1,9 @@
 === WP-FFPC ===
-Contributors: cadeyrn, ameir, haroldkyle, plescheff, dkcwd, IgorCode
-Donate link: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=XU3DG7LLA76WC
-Tags: cache, page cache, full page cache, nginx, memcached, apc, speed
-Requires at least: 3.0
-Tested up to: 4.3.1
-Stable tag: 1.10.1
+Contributors: diablodale, cadeyrn, ameir, haroldkyle, plescheff, dkcwd, IgorCode
+Tags: cache, page cache, full page cache, nginx, memcache, memcached, apc, apcu, redis, speed
+Requires at least: 3.1
+Tested up to: 4.6.1
+Stable tag: 2.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
@@ -12,26 +11,27 @@ The fastest way to cache: use the memory!
 
 == Description ==
 
-WP-FFPC ( WordPress Fast Full Page Cache ) is a cache plugin for [WordPress](http://wordpress.org/ "WordPress"). It works with any webserver, including apache2, lighttpd, nginx.
-It can be configured to join forces with [NGiNX](http://NGiNX.org "NGiNX")'s built-in [memcached plugin](http://nginx.org/en/docs/http/ngx_http_memcached_module.html "memcached plugin") for unbeatable speed.
+WP-FFPC (WordPress Fast Full Page Cache) is a cache plugin for [WordPress](http://wordpress.org/ "WordPress"). It works with any webserver, including apache2, lighttpd, nginx.
+It can be configured to join forces with [NGiNX](http://NGiNX.org "NGiNX")'s built-in
+[memcached plugin](http://nginx.org/en/docs/http/ngx_http_memcached_module.html "memcached plugin") for unbeatable speed.
 
-= **IMPORTANT NOTES, PLEASE READ THIS LIST** =
-
-* Requirements:
-  * WordPress >= 3.0
-  * **at least one** of the following for storage backend:
-    * memcached with [PHP Memcached](http://php.net/manual/en/book.memcached.php "Memcached") > 0.1.0
-    * memcached with [PHP Memcache](http://php.net/manual/en/book.memcache.php "Memcache") > 2.1.0
-    * [APC](http://php.net/manual/en/book.apc.php "APC")
+= IMPORTANT NOTES, PLEASE READ THIS LIST =
+Requirements:
+  * WordPress 3.1+
+  * PHP 5.3+
+  * One of the following for storage backend:
+    * memcached with [PHP Memcached](http://php.net/manual/en/book.memcached.php "Memcached") version 0.1.0+
     * [APCu](http://pecl.php.net/package/APCu "APC User Cache")
-  * PHP 5.3+ is really highly recommended, see "Known issues"
-* This plugin does **not** kick in right after activation. You have to adjust the setting in Settings -> WP-FFPC and save the settings.*
-
+    * [Redis](https://pecl.php.net/package/redis "Redis")
+    * memcache with [PHP Memcache](http://php.net/manual/en/book.memcache.php "Memcache") version 2.1.0+
+    * [APC](http://php.net/manual/en/book.apc.php "APC")
+  
+After installing, choose and save your cache settings in the admin plugin settings page for WP-FFPC
 
 = Known issues =
 
-* errors will not be displayed on the admin section if PHP < 5.3, only in the logs. This is due to the limitations of displaying the errors ( admin_notices is a hook, not a filter ) and due to the lack of proper anonymus functions in older PHP. PHP 5.3 is 5 years old, so it's time to upgrade.
-* APC with PHP 5.4 is buggy; the plugin with that setup can even make your site slower. Please use APCu or memcached if you're using PHP >= 5.4
+* APC with PHP 5.4 is not reliable and may make your site slower. Please instead use APCu, memcached, or Redis.
+* Wordpress networks (multisite) using [path-based subdirectories](https://codex.wordpress.org/Create_A_Network "path-based subdirectories") are not supported.
 
 = Features: =
 
@@ -43,7 +43,6 @@ It can be configured to join forces with [NGiNX](http://NGiNX.org "NGiNX")'s bui
   * memcached with [PHP Memcache](http://php.net/manual/en/book.memcache.php "Memcache")
   * [APC](http://php.net/manual/en/book.apc.php "APC")
   * [APCu](http://pecl.php.net/package/APCu "APC User Cache")
-  * [Xcache](http://xcache.lighttpd.net/ "Xcache") - not stable yet, volunteer testers required!
 * cache exclude options ( home, feeds, archieves, pages, singles; regex based url exclusion )
 * (optional) cache for logged-in users
 * 404 caching

@@ -11,15 +11,6 @@ if ( !function_exists ('__translate__') ) {
 	}
 }
 
-// Workaround for Wordpress 3.0
-if ( !function_exists('get_current_blog_id') )
-{
-	function get_current_blog_id() {
-		global $blog_id;
-		return absint($blog_id);
-	}
-}
-
 /* this is the base class for all backends; the actual workers
  * are included at the end of the file from backends/ directory */
 

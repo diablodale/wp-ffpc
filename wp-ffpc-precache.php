@@ -52,7 +52,7 @@ foreach ( $links as $permalink ) {
 	}
 	else {
 		$size = round ( ( strlen ( $page ) / 1024 ), 2 );
-		$endtime = round( microtime(true) - $starttime, 2 );
+		$endtime = round( microtime(true) - $starttime, 3 );
 	}
 	if ($logfile && (false === fwrite($logfile, $permalink . "\t" .  $endtime . "\t" . $size . "\n"))) {
 		@fclose($logfile);

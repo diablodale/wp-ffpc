@@ -169,7 +169,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		add_action( 'upgrader_process_complete', array ( &$this->plugin_upgrade ), 10, 2 );
 
 		/* cache invalidation hooks */
-		add_action(  'transition_post_status',  array( &$this->backend , 'clear_ng' ), 10, 3 );
+		add_action( 'transition_post_status', array( &$this->backend , 'clear_ng' ), 10, 3 );
 
 		/* comments invalidation hooks */
 		if ( $this->options['comments_invalidate'] ) {
@@ -190,7 +190,19 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		if ( WP_CACHE )
 			add_filter('redirect_canonical', 'wp_ffpc_redirect_callback', 10, 2);
 
-		/* add precache coldrun action for scheduled runs */
+		/* site and blog id token */
+		if (is_multisite())
+			$siteblogid = get_current_site()->id . '-' . get_current_blog_id();
+		else
+			$siteblogid = '0-0';
+		/* precache worker temporary directory */
+		$this->precache_worker_dir = untrailingslashit(static::get_temp_dir()) . DIRECTORY_SEPARATOR . $this->plugin_constant;
+		/* precache log */
+		$this->precache_logfile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.log';
+		/* precache data file containing urls to precache */
+		$this->precache_datafile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.data';
+
+		/* add precache coldrun action for scheduled cron runs */
 		// TODO try to make precache operations as static
 		add_action( self::precache_id , array( &$this, 'precache_coldrun' ) );
 	}
@@ -268,23 +280,11 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 * extending admin init
 	 */
 	public function plugin_extend_admin_init () {
-		/* site and blog id token */
-		if (is_multisite())
-			$siteblogid = get_current_site()->id . '-' . get_current_blog_id();
-		else
-			$siteblogid = '0-0';
-		/* precache worker temporary directory */
-		$this->precache_worker_dir = untrailingslashit(get_temp_dir()) . DIRECTORY_SEPARATOR . $this->plugin_constant;
-		/* precache log */
-		$this->precache_logfile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.log';
-		/* precache data file containing urls to precache */
-		$this->precache_datafile = $this->precache_worker_dir . DIRECTORY_SEPARATOR . self::precache_worker_prefix . $siteblogid . '.data';
-
 		// hook in publisher of admin notices that will appear on all admin pages; enables late logic/validation yet can still publish admin notices
 		add_action( 'admin_head', array( &$this, 'plugin_admin_notice_publisher_all_pages' ) );
 		/* hook in plugin settings page specific actions and filters */
 		if ( $this->settings_page_hook_suffix ) {
-			add_filter( 'contextual_help', array( &$this, 'plugin_admin_help' ), 10, 3 );	// legacy method WP 3.0+
+			add_filter( 'contextual_help', array( &$this, 'plugin_admin_help' ), 10, 3 );	// using this legacy method works for WP 3.0+
 			add_action( 'load-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_load_dash' ) );
 			add_action( 'admin_head-' . $this->settings_page_hook_suffix, array( &$this, 'plugin_admin_notice_publisher_settings_page' ) );
 		}
@@ -1344,10 +1344,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 	 *
 	 */
 	private function precache_list_permalinks ( &$links, $site = false ) {
-		/* $post will be populated when running throught the posts */
-		global $post;
-		include_once ABSPATH . 'wp-load.php';
-
 		/* if a site id was provided, save current blog and change to the other site */
 		if ( $site !== false ) {
 			$current_blog = get_current_blog_id();
@@ -1369,7 +1365,8 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		);
 		$posts = new WP_Query( $args );
 
-		/* get all the posts, one by one  */
+		// get all the posts, one by one; $post will be populated when running throught the posts
+		global $post;
 		while ( $posts->have_posts() ) {
 			$posts->the_post();
 
@@ -1417,6 +1414,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		}
 	}
 
+	// function used by some other plugins like WP-FFPC-Purge https://github.com/zeroturnaround/wp-ffpc-purge
 	public function getBackend() {
 		return $this->backend;
 	}

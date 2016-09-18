@@ -11,6 +11,17 @@ if ( !function_exists ('__debug__') ) {
 	}
 }
 
+/* no cache for post request (comments, plugins and so on) or if we are in the wp-cron.php process */
+if ( ($_SERVER['REQUEST_METHOD'] === 'POST') || defined('DOING_CRON') )
+	return false;
+
+/**
+ * no cache for enabled and currently existing session
+ * TODO re-evaluate this
+ */
+if (defined('SID') && SID !== '')
+	return false;
+
 /* check for config */
 if (!isset($wp_ffpc_config))
 	return false;
@@ -26,17 +37,6 @@ else {
 	unset($GLOBALS['wp_ffpc_config']);
 	return false;
 }
-
-/* no cache for post request (comments, plugins and so on) */
-if ($_SERVER['REQUEST_METHOD'] == 'POST')
-	return false;
-
-/**
- * Try to avoid enabling the cache if sessions are managed
- * with request parameters and a session is active
- */
-if (defined('SID') && SID != '')
-	return false;
 
 /* request uri */
 $wp_ffpc_uri = $_SERVER['REQUEST_URI'];

@@ -1,15 +1,19 @@
 <?php
 /*
 Plugin Name: WP-FFPC
-Plugin URI: https://github.com/petermolnar/wp-ffpc
+Plugin URI: https://github.com/diablodale/wp-ffpc
 Description: WordPress in-memory full page cache plugin
 Version: 1.10.1
-Author: Peter Molnar <hello@petermolnar.eu>
-Author URI: http://petermolnar.eu/
+Author: Dale Phurrough<dale@hidale.com>
+Author URI: http://hidale.com/
 License: GPLv3
+License URI: http://www.gnu.org/licenses/gpl-3.0.html
 */
 
-/*  Copyright 2010-2014 Peter Molnar ( hello@petermolnar.eu )
+/*  
+	(c)2016 Dale Phurrough (dale@hidale.com)
+
+	Based on earlier code (c)2010-2014 Peter Molnar (hello@petermolnar.eu)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License, version 3, as
@@ -63,4 +67,4 @@ $wp_ffpc_defaults = array (
 	'hashkey'             => false,
 );
 
-$wp_ffpc = new WP_FFPC ( 'wp-ffpc', '1.10.1', 'WP-FFPC', $wp_ffpc_defaults, 'PeterMolnar_WordPressPlugins_wp-ffpc_HU' , 'WP-FFPC' , 'FA3NT7XDVHPWU' );
+$wp_ffpc = new WP_FFPC ( 'wp-ffpc', '1.10.1', 'WP-FFPC', $wp_ffpc_defaults, false , false , false );
