@@ -214,14 +214,78 @@ abstract class WP_FFPC_Backend {
 		return $result;
 	}
 
-	/*
-	 * next generation clean
-	 *
-	 *
-	 */
-	public function clear_post_on_transition( $new_status, $old_status, $post ) {
-		error_log('in clear_post_on_transition()');
-		$this->clear( $post->ID );
+	// clean by transition hook
+	// custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
+	public function clear_post_on_transition( $new_status, $old_status, &$post ) {
+		error_log("clear_post_on_transition() n={$new_status} o={$old_status} t={$post->post_type} i={$post->ID}");
+		// ignore revisions and nav menus
+		if ( ('revision' === $post->post_type) || ('nav_menu_item' === $post->post_type) ) 
+			return;
+		// clear cache of old content so newly saved content will be cached
+		if ( ('publish' === $new_status) && ('publish' === $old_status) )
+			$this->clear( $post->ID );
+		// clear cache of the no longer published content
+		if ( ('publish' !== $new_status) && ('publish' === $old_status) )
+			// BUGBUG need to get links for just 
+
+		// ignore private (because you have to be logged in to see it) and draft content
+		if ( ('private' === $new_status) || ('draft' === $new_status) )
+			return;
+	}
+
+	// cache clean by hook callback as post/page/attach moves out of the publish state
+	// TODO add status=private and password status=publish handling
+	// add custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
+	public function clear_post_on_depublish( $post_id, $post_after, $post_before ) {
+		// ignore revisions and nav menus
+		if ( ('revision' === $post_before->post_type) || ('nav_menu_item' === $post_before->post_type) ) 
+			return;
+		// clear cache for existing in-place edits, clear cache for depublishes/trash/redraft, ignore new publishes
+		if ('publish' === $post_before->post_status) {
+			if ('publish' === $post_after->post_status) {
+				$this->clear( $post_before->ID );
+			}
+			else {
+				// BUGBUG need to create shared function to use a wp_post to get the permalink and then the cache key
+				$depuburl = get_permalink($post_before);
+				error_log("depublish={$depuburl}");
+			}
+		}
+	}
+
+	// clear cache for posts/attachments/pages that were not already in the trash
+	// TODO add status=private and password status=publish handling
+	private static $delete_queue = array();
+	public function clear_post_before_forcedelete( $post_id ) {
+		error_log('clear_post_before_forcedelete()');
+		// ignore duplicate calls that can occur in WP 3.x
+		if ( isset(self::$delete_queue[$post_id]) )
+			return;
+		// ignore posts that are not currently published
+		$post_status = get_post_status( $post_id );
+		if ('publish' !== $post_status)
+			return;
+		// get the post object for this id
+		if ( !$post_before = get_post( $post_id ) )
+			return;
+		// ignore revisions and nav menus
+		if ( ('revision' === $post_before->post_type) || ('nav_menu_item' === $post_before->post_type) ) 
+			return;
+		// save into the delete queue
+		self::$delete_queue[$post_id] = $post_before; 
+		error_log('before_dq=' . print_r(self::$delete_queue, true));
+	}
+
+	public function clear_post_after_forcedelete( $post_id ) {
+		error_log('clear_post_after_forcedelete()');
+		// ignore duplicate calls that can occur in WP 3.x and completed deletes
+		if ( empty(self::$delete_queue[$post_id]) )
+			return;
+		// BUGBUG need to create shared function to use a wp_post to get the permalink and then the cache key
+		$depuburl = get_permalink(self::$delete_queue[$post_id]);
+		error_log("forcedelete={$depuburl}");
+		self::$delete_queue[$post_id] = false;
+		error_log('after_dq=' . print_r(self::$delete_queue, true));
 	}
 
 	/**

@@ -169,7 +169,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		add_action( 'upgrader_process_complete', array ( &$this->plugin_upgrade ), 10, 2 );
 
 		/* cache invalidation hooks */
-		add_action( 'transition_post_status', array( &$this->backend , 'clear_post_on_transition' ), 10, 3 );
+		// BUGBUG add in site url changes, permalink changes, etc.
+		add_action( 'switch_theme', array( &$this->backend , 'clear' ), 0 );
+		// workaround for WP 3.x bug and overall WP limitation; save the WP_Post before delete and then clear cache after a successful delete
+		add_action( 'delete_post', array( &$this->backend , 'clear_post_before_forcedelete' ), 0 );
+		add_action( 'deleted_post', array( &$this->backend , 'clear_post_after_forcedelete' ), 0 );
+		add_action( 'attachment_updated', array( &$this->backend , 'clear_post_on_depublish' ), 0, 3 );
+		//add_action( 'transition_post_status', array( &$this->backend , 'clear_post_on_transition' ), 0, 3 );		
+		add_action( 'post_updated', array( &$this->backend , 'clear_post_on_depublish' ), 0, 3 );
 
 		/* comments invalidation hooks */
 		if ( $this->options['comments_invalidate'] ) {
@@ -180,11 +187,6 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			add_action( 'trackback_post', array( &$this->backend , 'clear' ), 0 );
 			add_action( 'wp_insert_comment', array( &$this->backend , 'clear' ), 0 );
 		}
-
-		/* invalidation on some other ocasions as well */
-		add_action( 'switch_theme', array( &$this->backend , 'clear' ), 0 );
-		add_action( 'deleted_post', array( &$this->backend , 'clear' ), 0 );
-		add_action( 'edit_post', array( &$this->backend , 'clear' ), 0 );
 
 		/* add filter for catching canonical redirects */
 		if ( WP_CACHE )

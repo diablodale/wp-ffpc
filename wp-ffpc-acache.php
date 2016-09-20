@@ -82,7 +82,7 @@ require_once __DIR__ . '/wp-ffpc-backend.php';
 if (!empty($_COOKIE)) {
 	// start with the cookies that suggest users are logged-in 
 	if ( empty($wp_ffpc_config['cache_loggedin']) )
-		$nocache_cookies = $wp_ffpc_auth_cookies;
+		$nocache_cookies = $wp_ffpc_auth_cookies;	// TODO switch back to storing auth cookies in the class as a static var or return of a function
 	else
 		$nocache_cookies = array();
 	// next add admin-specified cookies
