@@ -435,7 +435,7 @@ function wp_ffpc_callback( $buffer ) {
 		$meta['redirect'] = $wp_ffpc_redirect;
 
 	/* store pingback url if pingbacks are enabled */
-	if ( get_option ( 'default_ping_status' ) === 'open' )
+	if ( get_option('default_ping_status') === 'open' )
 		$meta['pingback'] = get_bloginfo('pingback_url');
 
 	/* add generation info is option is set, but only to HTML */

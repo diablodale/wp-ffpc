@@ -1,13 +1,13 @@
 <?php
 
 /* __ only availabe if we're running from the inside of wordpress, not in advanced-cache.php phase */
-if ( !function_exists ('__translate__') ) {
+if ( !function_exists('__translate__') ) {
 	/* __ only availabe if we're running from the inside of wordpress, not in advanced-cache.php phase */
-	if ( function_exists ( '__' ) ) {
-		function __translate__ ( $text, $domain ) { return __($text, $domain); }
+	if ( function_exists( '__' ) ) {
+		function __translate__( $text, $domain ) { return __($text, $domain); }
 	}
 	else {
-		function __translate__ ( $text, $domain ) { return $text; }
+		function __translate__( $text, $domain ) { return $text; }
 	}
 }
 
@@ -18,7 +18,7 @@ if (!class_exists('WP_FFPC_Backend')) :
 
 // array of cookies to look for when looking for authenticated users
 // it is a hack to store them in this file, however this is the only file shared in common w/ the admin option codebase
-$wp_ffpc_auth_cookies = array ( 'comment_author_' , 'wordpressuser_' , 'wp-postpass_', 'wordpress_logged_in_' );
+$wp_ffpc_auth_cookies = array( 'comment_author_' , 'wordpressuser_' , 'wp-postpass_', 'wordpress_logged_in_' );
 
 abstract class WP_FFPC_Backend {
 
@@ -48,7 +48,7 @@ abstract class WP_FFPC_Backend {
 	public function __construct( $config ) {
 
 		/* no config, nothing is going to work */
-		if ( empty ( $config ) ) {
+		if ( empty( $config ) ) {
 			return false;
 			//die ( __translate__ ( 'WP-FFPC Backend class received empty configuration array, the plugin will not work this way', 'wp-ffpc') );
 		}
@@ -56,10 +56,10 @@ abstract class WP_FFPC_Backend {
 		$this->options = $config;
 
 		/* map the key with the predefined schemes */
-		$ruser = isset ( $_SERVER['REMOTE_USER'] ) ? $_SERVER['REMOTE_USER'] : '';
-		$ruri = isset ( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
-		$rhost = isset ( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
-		$scookie = isset ( $_COOKIE['PHPSESSID'] ) ? $_COOKIE['PHPSESSID'] : '';
+		$ruser = isset( $_SERVER['REMOTE_USER'] ) ? $_SERVER['REMOTE_USER'] : '';
+		$ruri = isset( $_SERVER['REQUEST_URI'] ) ? $_SERVER['REQUEST_URI'] : '';
+		$rhost = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
+		$scookie = isset( $_COOKIE['PHPSESSID'] ) ? $_COOKIE['PHPSESSID'] : '';
 
 		if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && ($_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https'))
 			$_SERVER['HTTPS'] = 'on';
@@ -77,7 +77,7 @@ abstract class WP_FFPC_Backend {
 		$this->set_servers();
 
 		/* info level */
-		$this->log (  __translate__('init starting', 'wp-ffpc'));
+		$this->log(  __translate__('init starting', 'wp-ffpc'));
 
 		/* call backend initiator based on cache type */
 		$init = $this->_init();
@@ -103,17 +103,14 @@ abstract class WP_FFPC_Backend {
 	 */
 	public static function parse_urimap($uri, $default_urimap=null) {
 		$uri_parts = parse_url( $uri );
-
 		$uri_map = array(
 			'$scheme' => $uri_parts['scheme'],
 			'$host' => $uri_parts['host'],
 			'$request_uri' => $uri_parts['path']
 		);
-
 		if (is_array($default_urimap)) {
 			$uri_map = array_merge($default_urimap, $uri_map);
 		}
-
 		return $uri_map;
 	}
 
@@ -133,7 +130,7 @@ abstract class WP_FFPC_Backend {
 	 * @param array $customUrimap to override defaults
 	 *
 	 */
-	public function key ( $prefix, $customUrimap = null ) {
+	public function key( $prefix, $customUrimap = null ) {
 		$urimap = $customUrimap ?: $this->urimap;
 
 		$key_base = self::map_urimap($urimap, $this->options['key']);
@@ -157,7 +154,7 @@ abstract class WP_FFPC_Backend {
 	 *
 	 * @return mixed False when entry not found or entry value on success
 	 */
-	public function get ( &$key ) {
+	public function get( &$key ) {
 		/* look for backend aliveness, exit on inactive backend */
 		if ( ! $this->is_alive() ) {
 			$this->log ('WARNING: Backend offline');
@@ -186,7 +183,7 @@ abstract class WP_FFPC_Backend {
 	 *
 	 * @return mixed $result status of set function
 	 */
-	public function set ( &$key, &$data, $expire = false ) {
+	public function set( &$key, &$data, $expire = false ) {
 		/* look for backend aliveness, exit on inactive backend */
 		// TODO re-evaluate this alive check. Doing it causes a 2x increase in cache traffic isalive() + set()
 		// it might be better to just do a set() since they both will return false
@@ -222,117 +219,114 @@ abstract class WP_FFPC_Backend {
 	 *
 	 *
 	 */
-	public function clear_ng ( $new_status, $old_status, $post ) {
-		$this->clear ( $post->ID );
+	public function clear_post_on_transition( $new_status, $old_status, $post ) {
+		error_log('in clear_post_on_transition()');
+		$this->clear( $post->ID );
 	}
 
 	/**
-	 * public get function, transparent proxy to internal function based on backend
+	 * public clear function, transparent proxy to internal function based on backend
 	 *
 	 * @param string $post_id	ID of post to invalidate
 	 * @param boolean $force 	Force flush cache
 	 *
 	 */
-	public function clear ( $post_id = false, $force = false ) {
-
-		/* look for backend aliveness, exit on inactive backend */
-		if ( ! $this->is_alive() )
-			return false;
-
+	// BUGBUG on transitions, often getting revisions which have links like: http://centos6/2016/09/26-revision-4/
+	public function clear( $post_id = false, $force = false ) {
 		/* exit if no post_id is specified */
-		if ( empty ( $post_id ) && $force === false ) {
-			$this->log (  __translate__('not clearing unidentified post ', 'wp-ffpc'), self::LOG_WARNING );
+		if ( !is_int($post_id) && (true !== $force ) ) {
+			$this->log( __translate__('not clearing unidentified post ', 'wp-ffpc'), self::LOG_WARNING );
 			return false;
 		}
 
-		/* if invalidation method is set to full, flush cache */
-		if ( ( $this->options['invalidation_method'] === 0 || $force === true ) ) {
+		/* look for backend aliveness, exit on inactive backend */
+		if ( !$this->is_alive() )
+			return false;
+
+		/* if invalidation method is set to full flush cache; intentionally test against integer 0 */
+		if ( (true === $force) || ($this->options['invalidation_method'] == 0) ) {
 			/* log action */
-			$this->log (  __translate__('flushing cache', 'wp-ffpc') );
+			$this->log( __translate__('flushing cache', 'wp-ffpc') );
 
 			/* proxy to internal function */
 			$result = $this->_flush();
-
 			if ( $result === false )
-				$this->log (  __translate__('failed to empty cache', 'wp-ffpc'), self::LOG_WARNING );
-
+				$this->log( __translate__('failed to empty cache', 'wp-ffpc'), self::LOG_WARNING );
 			return $result;
 		}
 
 		/* storage for entries to clear */
 		$to_clear = array();
 
-		/* clear taxonomies if settings requires it */
-		if ( $this->options['invalidation_method'] == 2 ) {
-			/* this will only clear the current blog's entries */
+		// clear taxonomies and archives of the blog; intentionally test against string '2'
+		if ( $this->options['invalidation_method'] == '2' ) {
+			// TODO only clear the taxonomies and archives of the new post and (if edited) the old post, e.g. get_month_link()
 			$this->taxonomy_links( $to_clear );
+			$this->archive_links( $to_clear );
 		}
-
-		/* clear pasts index page if settings requires it */
-		if ( $this->options['invalidation_method'] == 3 ) {
-			$posts_page_id = get_option( 'page_for_posts' );
+		// clear the blog page (i.e. posts ìndex) which can be different than the home page; intentionally test against string '3'
+		// BUGBUG need to port this logic to use the further below uri mapping
+		elseif ( $this->options['invalidation_method'] == '3' ) {
 			$post_type = get_post_type( $post_id );
-
-			if ($post_type === 'post' && $posts_page_id != $post_id) {
-				$this->clear($posts_page_id, $force);
+			if ($post_type === 'post') {
+				if ('posts' === get_option('show_on_front')) {
+					$to_clear[ trailingslashit(home_url()) ] = true;
+				}
+				else {	// front is something else, e.g. static page
+					$posts_page_id = (int)get_option('page_for_posts');
+					if ($posts_page_id)
+						// BUGBUG this doesn't handle pagination; to know which/all pages of the blog to clear
+						// $count_posts = wp_count_posts();
+						$to_clear[ trailingslashit(get_permalink($posts_page_id)) ] = true;	// get_page_link($posts_page_id);
+				}
 			}
 		}
 
+		/* get permalink */
+		// BUGBUG if post is a draft (e.g. publish transitioned back to draft), then the permalink is 
+		// not pretty; it is instead a query string 
+		$permalink = get_permalink( $post_id );
 
-		/* if there's a post id pushed, it needs to be invalidated in all cases */
-		if ( !empty ( $post_id ) ) {
-
-			/* need permalink functions */
-			// BUGBUG this is unusual because we use many core WP functions above yet don't 
-			// test for them nor do includes; the chance that get_option() works above yet
-			// get_permalink() doesn't work is almost zero
-			if ( !function_exists('get_permalink') )
-				include_once ABSPATH . 'wp-includes/link-template.php';
-
-			/* get permalink */
-			$permalink = get_permalink( $post_id );
-
-			/* no path, don't do anything */
-			if ( empty( $permalink ) && $permalink != false ) {
-				$this->log( __translate__("unable to determine path from Post Permalink, post ID: $post_id", 'wp-ffpc'), self::LOG_WARNING );
-				return false;
-			}
-
-			/*
-			 * It is possible that post/page is paginated with <!--nextpage-->
-			 * Wordpress doesn't seem to expose the number of pages via API.
-			 * So let's just count it.
-			 */
-			$content_post = get_post( $post_id );
-			$content = $content_post->post_content;
-			$number_of_pages = 1 + (int)preg_match_all('/<!--nextpage-->/', $content, $matches);
-
-			$current_page_id = '';
-			do {
-				/* urimap */
-				$urimap = self::parse_urimap($permalink, $this->urimap);
-				$urimap['$request_uri'] = $urimap['$request_uri'] . ($current_page_id ? $current_page_id . '/' : '');
-
-				$clear_cache_key = self::map_urimap($urimap, $this->options['key']);
-
-				$to_clear[ $clear_cache_key ] = true;
-
-				$current_page_id = 1+(int)$current_page_id;
-			} while ($number_of_pages>1 && $current_page_id<=$number_of_pages);
+		/* no path, don't do anything */
+		if ( empty($permalink) ) {
+			$this->log( __translate__("unable to determine path from Post Permalink, post ID: $post_id", 'wp-ffpc'), self::LOG_WARNING );
+			return false;
 		}
+
+		/*
+			* It is possible that post/page is paginated with <!--nextpage-->
+			* Wordpress doesn't seem to expose the number of pages via API.
+			* So let's just count it.
+			* BUGBUG need to re-evaluate this method of invalidating paged content because
+			*        highly expensive in computation; also inaccurate because when a post is edited,
+			*        the old content and new content could have different number of pages
+			*/
+		$content_post = get_post( $post_id );
+		$content = $content_post->post_content;
+		$number_of_pages = 1 + (int)preg_match_all('/<!--nextpage-->/', $content, $matches);
+		$urimap_init = self::parse_urimap($permalink, $this->urimap);
+		$current_page_id = 0;
+		do {
+			$urimap = $urimap_init;
+			$urimap['$request_uri'] = $urimap['$request_uri'] . ($current_page_id ? $current_page_id . '/' : '');
+			$clear_cache_key = self::map_urimap($urimap, $this->options['key']);
+			$to_clear[ $clear_cache_key ] = true;
+			++$current_page_id;
+		} while ( ($number_of_pages > 1) && ($current_page_id <= $number_of_pages) );
 
 		/* run clear */
 		$this->clear_keys( $to_clear );
+		error_log('clear='.print_r($to_clear, true));
 	}
 
 	/*
 	 * unset entries by key
 	 * @param array $keys
 	 */
-	public function clear_keys( $keys ) {
+	public function clear_keys( &$keys ) {
 		// filter hook used by other plugins like WP-FFPC-Purge https://github.com/zeroturnaround/wp-ffpc-purge
 		$to_clear = apply_filters('wp_ffpc_clear_keys_array', $keys, $this->options);
-		$this->_clear ( $to_clear );
+		$this->_clear( $to_clear );
 	}
 
 	/**
@@ -341,38 +335,28 @@ abstract class WP_FFPC_Backend {
 	 * @param $comment_id	Comment ID
 	 * @param $comment_object	The whole comment object ?
 	 */
-	public function clear_by_comment ( $comment_id, $comment_object ) {
+	public function clear_by_comment( $comment_id, $comment_object ) {
 		if ( empty( $comment_id ) )
 			return false;
-
 		$comment = get_comment( $comment_id );
 		$post_id = $comment->comment_post_ID;
-		if ( !empty( $post_id ) )
-			$this->clear ( $post_id );
-
-		unset ( $comment );
-		unset ( $post_id );
+		$this->clear( $post_id );
 	}
 
 	/**
 	 * to collect all permalinks of all taxonomy terms used in invalidation & precache
 	 *
-	 * @param array &$links Passed by reference array that has to be filled up with the links
-	 * @param mixed $site Site ID or false; used in WordPress Network
+	 * @param array &$links: Passed by reference array that has to be filled up with the links
+	 * @param mixed $switch_blog_id: WP blog id (integer) or false
 	 *
 	 */
-	public function taxonomy_links ( &$links, $site = false ) {
-
-		if ( $site !== false ) {
-			$current_blog = get_current_blog_id();
-			switch_to_blog( $site );
-
-			$url = get_blog_option ( $site, 'siteurl' );
-			if ( substr( $url, -1) !== '/' )
-				$url = $url . '/';
-
-			$links[ $url ] = true;
-		}
+	public function taxonomy_links( &$links, $switch_blog_id = false ) {
+		// if a switch_blog_id was provided, save current blog and change to the other site
+		if ( (false !== $switch_blog_id) && (get_current_blog_id() !== $switch_blog_id) )
+			switch_to_blog( $switch_blog_id );
+		
+		// add home page
+		$links[ trailingslashit(home_url()) ] = true;
 
 		/* we're only interested in public taxonomies */
 		$args = array(
@@ -423,12 +407,44 @@ abstract class WP_FFPC_Backend {
 			}
 		}
 
-		/* switch back to original site if we navigated away */
-		// BUGBUG not correctly restoring original site; see https://codex.wordpress.org/Function_Reference/restore_current_blog
-		if ( $site !== false ) {
-			switch_to_blog( $current_blog );
+		/* switch back to original site */
+		if ( $switch_blog_id !== false ) {
+			restore_current_blog();
+		}
+	}
+
+	// add post archive pages by month and year to links array
+	// $links: should be an array; passing something else could cause faults
+	// $switch_blog_id: optional and if provided should be an integer WP blog_id
+	// TODO add archives for categories, tags, authors, date, custom posts, custom taxonomies
+	// e.g. wp_list_...: categories(), authors(), pages(), bookmarks(), comments(), wp_tag_cloud(), etc.
+	public function archive_links( &$links, $switch_blog_id = false ) {
+		// if a switch_blog_id was provided, save current blog and change to the other site
+		if ( (false !== $switch_blog_id) && (get_current_blog_id() !== $switch_blog_id) )
+			switch_to_blog( $switch_blog_id );
+		
+		// get_post_type_archive_link('post');
+		// get_month_link()
+		$args = array (
+			'type' => 'monthly',
+			'format' => 'custom',
+			'before' => '',
+			'after' => '',
+			'echo' => false
+		);
+		if ( preg_match_all( '`[\'"](https?:[^\'"]+)`i', wp_get_archives( $args ), $archives) ) {
+			$links = array_merge( $links, array_flip(array_map('html_entity_decode', $archives[1])) );
+		}
+		unset($archives);
+		$args['type'] = 'yearly';
+		if ( preg_match_all( '`[\'"](https?:[^\'"]+)`i', wp_get_archives( $args ), $archives) ) {
+			$links = array_merge( $links, array_flip(array_map('html_entity_decode', $archives[1])) );
 		}
 
+		/* switch back to original site */
+		if ( $switch_blog_id !== false ) {
+			restore_current_blog();
+		}
 	}
 
 	/**
@@ -437,7 +453,7 @@ abstract class WP_FFPC_Backend {
 	 * @return array Array of configured servers with aliveness value
 	 *
 	 */
-	public function status () {
+	public function status() {
 
 		/* look for backend aliveness, exit on inactive backend */
 		if ( ! $this->is_alive() )
@@ -467,7 +483,7 @@ abstract class WP_FFPC_Backend {
 	 *
 	 *
 	 */
-	protected function set_servers () {
+	protected function set_servers() {
 		if ( empty ($this->options['hosts']) )
 			return false;
 
@@ -502,7 +518,7 @@ abstract class WP_FFPC_Backend {
 	 * @return array Server list in current config
 	 *
 	 */
-	public function get_servers () {
+	public function get_servers() {
 		$r = isset ( $this->options['servers'] ) ? $this->options['servers'] : '';
 		return $r;
 	}
@@ -513,7 +529,7 @@ abstract class WP_FFPC_Backend {
 	 * @var mixed $message Message to log
 	 * @var int $log_level Log level
 	 */
-	protected function log ( $message, $level = self::LOG_NOTICE ) {
+	protected function log( $message, $level = self::LOG_NOTICE ) {
 		if ( @is_array( $message ) || @is_object ( $message ) )
 			$message = json_encode($message);
 
@@ -540,12 +556,12 @@ abstract class WP_FFPC_Backend {
 	}
 
 
-	abstract protected function _init ();
-	abstract protected function _status ();
-	abstract protected function _get ( &$key );
-	abstract protected function _set ( &$key, &$data, &$expire );
-	abstract protected function _flush ();
-	abstract protected function _clear ( &$keys );
+	abstract protected function _init();
+	abstract protected function _status();
+	abstract protected function _get( &$key );
+	abstract protected function _set( &$key, &$data, &$expire );
+	abstract protected function _flush();
+	abstract protected function _clear( &$keys );
 }
 
 endif;

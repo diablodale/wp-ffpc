@@ -128,8 +128,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * activation hook function
 	 */
-	public function plugin_activate()
-	{
+	public function plugin_activate() {
 		if (version_compare(PHP_VERSION, '5.3.0', '<')) {
 			deactivate_plugins( $this->plugin_file );
 			wp_die( $this->plugin_name . __(' plugin requires PHP version 5.3 or newer. The activation has been cancelled.', 'wp-ffpc') );
@@ -144,7 +143,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * deactivation hook function, to be extended
 	 */
-	abstract function plugin_deactivate ();
+	abstract function plugin_deactivate();
 
 	/**
 	 * runs within the __construct, after all the initial settings
@@ -286,14 +285,14 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param array $links Current links to add ours to
 	 *
 	 */
-	public function plugin_settings_link ( $links ) {
+	public function plugin_settings_link( $links ) {
 		$settings_link = '<a href="' . $this->settings_link . '">' . __( 'Settings', 'wp-ffpc') . '</a>';
 		array_unshift( $links, $settings_link );
 		return $links;
 	}
 
 	/* add admin styling */
-	public function enqueue_admin_css_js(){
+	public function enqueue_admin_css_js() {
 		/* jquery ui tabs is provided by WordPress */
 		wp_enqueue_script( 'jquery-ui-tabs', false, array('jquery', 'jquery-ui-core' ) );
 		wp_enqueue_script( 'jquery-ui-slider', false, array('jquery') );
@@ -305,7 +304,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * deletes saved options from database
 	 */
-	protected function plugin_options_delete () {
+	protected function plugin_options_delete() {
 		static::_delete_option ( $this->plugin_constant, static::$network_activated );
 
 		/* additional moves */
@@ -315,13 +314,13 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * hook to add functionality into plugin_options_delete
 	 */
-	abstract function plugin_extend_options_delete ();
+	abstract function plugin_extend_options_delete();
 
 	/**
 	 * reads options stored in database and reads merges them with default values
 	 */
-	protected function plugin_options_read () {
-		$options = static::_get_option ( $this->plugin_constant, static::$network_activated );
+	protected function plugin_options_read() {
+		$options = static::_get_option( $this->plugin_constant, static::$network_activated );
 
 		/* this is the point to make any migrations from previous versions */
 		$this->plugin_options_migrate( $options );
@@ -355,7 +354,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * hook to add functionality into plugin_options_read, runs after defaults check
 	 */
-	abstract function plugin_extend_options_read ( &$options );
+	abstract function plugin_extend_options_read( &$options );
 
 	/**
 	 * used on update and to save current options to database
@@ -365,7 +364,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 */
 	// TODO make config store an array for nocache_cookies because string parsing, array create, etc. is very expensive to do on every cache request
 	// and add validation like expire and TTL values should be numbers which are zero or greater
-	protected function plugin_options_save ( $activating = false ) {
+	protected function plugin_options_save( $activating = false ) {
 
 		/* only try to update defaults if it's not activation hook, $_POST is not empty and the post is ours */
 		if ( !$activating && !empty ( $_POST ) && isset( $_POST[ $this->button_save ] ) ) {
@@ -416,7 +415,7 @@ abstract class WP_FFPC_ABSTRACT {
 	/**
 	 * hook to add functionality into plugin_options_save
 	 */
-	abstract function plugin_extend_options_save ( $activating );
+	abstract function plugin_extend_options_save( $activating );
 
 	/**
 	 * function to easily print a variable
@@ -441,7 +440,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param mixed $e Element index of $this->defaults array
 	 *
 	 */
-	protected function print_default ( $e ) {
+	protected function print_default( $e ) {
 		_e('Default : ', 'wp-ffpc');
 		$select = 'select_' . $e;
 		if ( @is_array ( $this->$select ) ) {
@@ -469,7 +468,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * 	prints or returns the options string
 	 *
 	 */
-	protected function print_select_options ( $elements, $current, $valid = false, $print = true ) {
+	protected function print_select_options( $elements, $current, $valid = false, $print = true ) {
 
 		if ( is_array ( $valid ) )
 			$check_disabled = true;
@@ -501,7 +500,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * creates PayPal donation form based on plugin details
 	 * jQuery slider only exists in Wordpress 3.2+
 	 */
-	protected function plugin_donation_form () {
+	protected function plugin_donation_form() {
 		if ( $this->donation ) :
 		?>
 		<script>
@@ -549,7 +548,7 @@ abstract class WP_FFPC_ABSTRACT {
 		endif;
 	}
 
-	public function getoption ( $key ) {
+	public function getoption( $key ) {
 		return ( empty (  $this->options[ $key] ) ) ? false :  $this->options[ $key];
 	}
 
@@ -561,7 +560,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * option update; will handle network wide or standalone site options
 	 *
 	 */
-	public static function _update_option ( $optionID, $data, $network = false ) {
+	public static function _update_option( $optionID, $data, $network = false ) {
 		if ( $network ) {
 			static::debug( sprintf( __( ' – updating network option %s', 'PluginUtils' ), $optionID ) );
 			update_site_option( $optionID , $data );
@@ -576,7 +575,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * read option; will handle network wide or standalone site options
 	 *
 	 */
-	public static function _get_option ( $optionID, $network = false ) {
+	public static function _get_option( $optionID, $network = false ) {
 		if ( $network ) {
 			static::debug ( sprintf( __( '- getting network option %s', 'PluginUtils' ), $optionID ) );
 			$options = get_site_option( $optionID );
@@ -593,7 +592,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * clear option; will handle network wide or standalone site options
 	 *
 	 */
-	public static function _delete_option ( $optionID, $network = false ) {
+	public static function _delete_option( $optionID, $network = false ) {
 		if ( $network ) {
 			static::debug ( sprintf( __( ' – deleting network option %s', 'PluginUtils' ), $optionID ) );
 			delete_site_option( $optionID );
@@ -602,19 +601,6 @@ abstract class WP_FFPC_ABSTRACT {
 			static::debug ( sprintf( __( ' – deleting option %s', 'PluginUtils' ), $optionID ) );
 			delete_option( $optionID );
 		}
-	}
-
-	/**
-	 * read option; will handle network wide or standalone site options
-	 *
-	 */
-	public static function _site_url ( $site = '', $network = false ) {
-		if ( $network && !empty( $site ) )
-			$url = get_blog_option ( $site, 'siteurl' );
-		else
-			$url = get_bloginfo ( 'url' );
-
-		return $url;
 	}
 
 	/**
@@ -645,7 +631,7 @@ abstract class WP_FFPC_ABSTRACT {
 	 * @param boolean $network_activated alert displayed for network admin only
 	 * 
 	 */
-	static public function alert ( $msg, $level=self::LOG_WARNING, $network_activated=NULL ) {
+	static public function alert( $msg, $level=self::LOG_WARNING, $network_activated=NULL ) {
 		//if ( php_sapi_name() === "cli" ) return false;
 		if ( empty($msg)) return false;
 
@@ -751,12 +737,14 @@ abstract class WP_FFPC_ABSTRACT {
 	                unlink( $path );
 	        return true;
 	}
+	// copied from WP 4.6 because WP 3.6 and earlier versions had poor logic and bugs
 	static protected function wp_is_writable( $path ) {
     if ( 'WIN' === strtoupper( substr( PHP_OS, 0, 3 ) ) )
         return static::win_is_writable( $path );
     else
         return @is_writable( $path );
 	}
+	// copied from WP 4.6 because WP 3.6 and earlier versions had poor logic and bugs
 	static protected function get_temp_dir() {
 		static $temp = '';
 		if ( defined('WP_TEMP_DIR') )

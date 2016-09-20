@@ -98,7 +98,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		else {
 			// BUGBUG get_option should likely be get_site_option for the case -> multisite without network activate
 			// BUGBUG this only supports domain-style multisite; it doesn't support path-style multisite
-			$sitedomain = parse_url( get_option('siteurl') , PHP_URL_HOST);
+			$sitedomain = parse_url( get_option('siteurl'), PHP_URL_HOST);
 			if ( $_SERVER['HTTP_HOST'] != $sitedomain )
 				static::alert( sprintf( __('Domain mismatch: the site domain configuration (%s) does not match the HTTP_HOST (%s) variable in PHP. Please fix the incorrect one, otherwise the plugin may not work as expected.', 'wp-ffpc'), $sitedomain, $_SERVER['HTTP_HOST'] ), self::LOG_WARNING);
 			$this->global_config_key = $_SERVER['HTTP_HOST'];
@@ -169,7 +169,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		add_action( 'upgrader_process_complete', array ( &$this->plugin_upgrade ), 10, 2 );
 
 		/* cache invalidation hooks */
-		add_action( 'transition_post_status', array( &$this->backend , 'clear_ng' ), 10, 3 );
+		add_action( 'transition_post_status', array( &$this->backend , 'clear_post_on_transition' ), 10, 3 );
 
 		/* comments invalidation hooks */
 		if ( $this->options['comments_invalidate'] ) {
@@ -411,7 +411,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			// which affects other subsites and applications. When multisite, code needs to isolate any cache
 			// clearing to not affect other sites/apps. Quick fix might be forbid invalidationmethod=flush on multisite
 			// except by super admin. Also need to have a return code from clear() to conditionally display an admin notice.
-			$this->backend->clear( false, true );
+			$this->backend->clear(null, true);
 			if ($precache_stopped)
 				static::alert( __( 'Cache emptied.' , 'wp-ffpc') , self::LOG_NOTICE );
 			else
@@ -1339,34 +1339,29 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		return $this->precache( $links );
 	}
 
-	/**
-	 * gets all post-like entry permalinks for a site, returns values in passed-by-reference array
-	 *
-	 */
+	// gets all post-like entry permalinks for a site, returns values in passed-by-reference array
+	// optional param $site is either false or a blog_id from which to get the links
+	// BUGBUG on WP 3.1 not all wanted pages are showing up in the precache log, missing ones are:
+	//   http://centos6/2016/09/
 	private function precache_list_permalinks ( &$links, $site = false ) {
-		/* if a site id was provided, save current blog and change to the other site */
-		if ( $site !== false ) {
-			$current_blog = get_current_blog_id();
+		// if a site id was provided, save current blog and change to the other site
+		if ( $site !== false )
 			switch_to_blog( $site );
 
-			$url = $this->_site_url( $site );
-			//$url = get_blog_option ( $site, 'siteurl' );
-			if ( substr( $url, -1) !== '/' )
-				$url = $url . '/';
+		// get home page but don't add here; the add is done in the backend->taxonomy_links()
+		$homeurl = trailingslashit( home_url() );
 
-			$links[ $url ] = true;
-		}
+		// save the posts ìndex (aka blog) page which can be different than the home page		
+		$links[ trailingslashit(get_permalink((int)get_option('page_for_posts'))) ] = true;
 
-		/* get all published posts */
+		// get all the posts, one by one; $post will be populated when running throught the posts
+		global $post;
 		$args = array (
 			'post_type' => 'any',
 			'posts_per_page' => -1,
 			'post_status' => 'publish',
 		);
 		$posts = new WP_Query( $args );
-
-		// get all the posts, one by one; $post will be populated when running throught the posts
-		global $post;
 		while ( $posts->have_posts() ) {
 			$posts->the_post();
 
@@ -1388,29 +1383,28 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					break;
 				default:
 					$permalink = get_permalink( $post->ID );
-				break;
 			}
 
-			/* in case the bloglinks are relative links add the base url, site specific */
-			$baseurl = empty( $url ) ? static::_site_url() : $url;
-			if ( !strstr( $permalink, $baseurl ) ) {
-				$permalink = $baseurl . $permalink;
+			// in case the bloglinks are relative links add the base url, site specific
+			// TODO re-evaluate this relative link support; seems rare->zero we would get them
+			if ( false === strpos( $permalink, $homeurl ) ) {
+				$permalink = $homeurl . $permalink;
 			}
 
 			/* collect permalinks */
 			$links[ $permalink ] = true;
-
 		}
-
-		$this->backend->taxonomy_links ( $links );
 
 		/* just in case, reset $post */
 		wp_reset_postdata();
 
-		/* switch back to original site if we navigated away */
-		// BUGBUG not correctly restoring original site; see https://codex.wordpress.org/Function_Reference/restore_current_blog
+		// add taxonomy, home, and archive links
+		$this->backend->taxonomy_links( $links );
+		$this->backend->archive_links( $links );
+
+		/* switch back to original site */
 		if ( $site !== false ) {
-			switch_to_blog( $current_blog );
+			restore_current_blog();
 		}
 	}
 
