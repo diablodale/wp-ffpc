@@ -214,29 +214,10 @@ abstract class WP_FFPC_Backend {
 		return $result;
 	}
 
-	// clean by transition hook
-	// custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
-	public function clear_post_on_transition( $new_status, $old_status, &$post ) {
-		error_log("clear_post_on_transition() n={$new_status} o={$old_status} t={$post->post_type} i={$post->ID}");
-		// ignore revisions and nav menus
-		if ( ('revision' === $post->post_type) || ('nav_menu_item' === $post->post_type) ) 
-			return;
-		// clear cache of old content so newly saved content will be cached
-		if ( ('publish' === $new_status) && ('publish' === $old_status) )
-			$this->clear( $post->ID );
-		// clear cache of the no longer published content
-		if ( ('publish' !== $new_status) && ('publish' === $old_status) )
-			// BUGBUG need to get links for just 
-
-		// ignore private (because you have to be logged in to see it) and draft content
-		if ( ('private' === $new_status) || ('draft' === $new_status) )
-			return;
-	}
-
-	// cache clean by hook callback as post/page/attach moves out of the publish state
+	// cache clean by hook callback as post/page/attach is updated or moves out of the publish state
 	// TODO add status=private and password status=publish handling
-	// add custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
-	public function clear_post_on_depublish( $post_id, $post_after, $post_before ) {
+	// TODO add custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
+	public function clear_post_on_redepublish( $post_id, $post_after, $post_before ) {
 		// ignore revisions and nav menus
 		if ( ('revision' === $post_before->post_type) || ('nav_menu_item' === $post_before->post_type) ) 
 			return;
@@ -253,7 +234,7 @@ abstract class WP_FFPC_Backend {
 		}
 	}
 
-	// clear cache for posts/attachments/pages that were not already in the trash
+	// clear cache for posts/attachments/pages that were not already in the trash (step 1)
 	// TODO add status=private and password status=publish handling
 	private static $delete_queue = array();
 	public function clear_post_before_forcedelete( $post_id ) {
@@ -276,6 +257,7 @@ abstract class WP_FFPC_Backend {
 		error_log('before_dq=' . print_r(self::$delete_queue, true));
 	}
 
+	// clear cache for posts/attachments/pages that were not already in the trash (step 2)
 	public function clear_post_after_forcedelete( $post_id ) {
 		error_log('clear_post_after_forcedelete()');
 		// ignore duplicate calls that can occur in WP 3.x and completed deletes
@@ -364,6 +346,7 @@ abstract class WP_FFPC_Backend {
 			* BUGBUG need to re-evaluate this method of invalidating paged content because
 			*        highly expensive in computation; also inaccurate because when a post is edited,
 			*        the old content and new content could have different number of pages
+			* BUGBUG code doesn't handle paged comments; where comments are split into multiple pages; see get_comment_pages_count()
 			*/
 		$content_post = get_post( $post_id );
 		$content = $content_post->post_content;
@@ -380,7 +363,6 @@ abstract class WP_FFPC_Backend {
 
 		/* run clear */
 		$this->clear_keys( $to_clear );
-		error_log('clear='.print_r($to_clear, true));
 	}
 
 	/*

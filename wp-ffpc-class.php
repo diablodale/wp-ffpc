@@ -168,25 +168,22 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 		// e.g. add_filter('upgrader_post_install', array($this, 'check_parent_theme_filter'), 10, 3);
 		add_action( 'upgrader_process_complete', array ( &$this->plugin_upgrade ), 10, 2 );
 
-		/* cache invalidation hooks */
-		// BUGBUG add in site url changes, permalink changes, etc.
+		// cache invalidation hooks
+		// BUGBUG add in site url changes, permalink changes, blogroll, etc.
 		add_action( 'switch_theme', array( &$this->backend , 'clear' ), 0 );
-		// workaround for WP 3.x bug and overall WP limitation; save the WP_Post before delete and then clear cache after a successful delete
+		// delete post, pages, attachments, etc. with a two step workaround for WP 3.x bug and
+		// overall WP limitation; save the WP_Post before delete and then clear cache after a successful delete
 		add_action( 'delete_post', array( &$this->backend , 'clear_post_before_forcedelete' ), 0 );
 		add_action( 'deleted_post', array( &$this->backend , 'clear_post_after_forcedelete' ), 0 );
-		add_action( 'attachment_updated', array( &$this->backend , 'clear_post_on_depublish' ), 0, 3 );
-		//add_action( 'transition_post_status', array( &$this->backend , 'clear_post_on_transition' ), 0, 3 );		
-		add_action( 'post_updated', array( &$this->backend , 'clear_post_on_depublish' ), 0, 3 );
-
-		/* comments invalidation hooks */
-		if ( $this->options['comments_invalidate'] ) {
-			add_action( 'comment_post', array( &$this->backend , 'clear' ), 0 );
-			add_action( 'edit_comment', array( &$this->backend , 'clear' ), 0 );
-			add_action( 'trashed_comment', array( &$this->backend , 'clear' ), 0 );
-			add_action( 'pingback_post', array( &$this->backend , 'clear' ), 0 );
-			add_action( 'trackback_post', array( &$this->backend , 'clear' ), 0 );
-			add_action( 'wp_insert_comment', array( &$this->backend , 'clear' ), 0 );
-		}
+		// posts, pages, attachments, etc. invalidation hooks when updating or leaving the publish state (e.g. going to trash)
+		add_action( 'attachment_updated', array( &$this->backend , 'clear_post_on_redepublish' ), 0, 3 );
+		add_action( 'post_updated', array( &$this->backend , 'clear_post_on_redepublish' ), 0, 3 );
+		// comments invalidation
+		// all of the following hooks can be replaced with the single hook 'wp_update_comment_count'
+		// because they all coalesce there when comments are approved as seen in code review of WP:
+		// comment_post, edit_comment, trashed_comment, pingback_post, trackback_post, wp_insert_comment
+		if ( $this->options['comments_invalidate'] )
+			add_action( 'wp_update_comment_count', array( &$this->backend , 'clear' ), 0 );
 
 		/* add filter for catching canonical redirects */
 		if ( WP_CACHE )
