@@ -356,8 +356,12 @@ function wp_ffpc_callback( $buffer ) {
 	case 'home':
 	case 'feed':
 		if (!empty($wp_ffpc_config['browsercache_home'])) {
-			$meta['expire'] = time() + $wp_ffpc_config['browsercache_home'];
+			$meta['expire'] = time() + (int)$wp_ffpc_config['browsercache_home'];
 		}
+		if (isset($wp_ffpc_config['expire_home']))
+			$backend_ttl = (int)$wp_ffpc_config['expire_home'];
+		else
+			$backend_ttl = 0;
 
 		/* get newest post and set last modified accordingly */
 		__debug__( 'Getting latest post for home & feed');
@@ -378,8 +382,12 @@ function wp_ffpc_callback( $buffer ) {
 		break;
 	case 'archive':
 		if (!empty($wp_ffpc_config['browsercache_taxonomy'])) {
-			$meta['expire'] = time() + $wp_ffpc_config['browsercache_taxonomy'];
+			$meta['expire'] = time() + (int)$wp_ffpc_config['browsercache_taxonomy'];
 		}
+		if (isset($wp_ffpc_config['expire_taxonomy']))
+			$backend_ttl = (int)$wp_ffpc_config['expire_taxonomy'];
+		else
+			$backend_ttl = 0;
 
 		global $wp_query;
 		if ( null != $wp_query->tax_query && !empty($wp_query->tax_query)) {
@@ -419,6 +427,11 @@ function wp_ffpc_callback( $buffer ) {
 			if ( !empty($shortlink) )
 				$meta['shortlink'] = $shortlink;
 		}
+	default:
+		if (isset($wp_ffpc_config['expire']))
+			$backend_ttl = (int)$wp_ffpc_config['expire'];
+		else
+			$backend_ttl = 0;
 	}
 
 	if (is_404()) {
@@ -452,10 +465,10 @@ function wp_ffpc_callback( $buffer ) {
 	}
 
 	$prefix_meta = $wp_ffpc_backend->key( $wp_ffpc_config['prefix_meta'] );
-	$wp_ffpc_backend->set( $prefix_meta, $meta );
+	$wp_ffpc_backend->set( $prefix_meta, $meta, $backend_ttl );
 
 	$prefix_data = $wp_ffpc_backend->key( $wp_ffpc_config['prefix_data'] );
-	$wp_ffpc_backend->set( $prefix_data , $buffer );
+	$wp_ffpc_backend->set( $prefix_data , $buffer, $backend_ttl );
 
 	/* echoes HTML out */
 	return $buffer;

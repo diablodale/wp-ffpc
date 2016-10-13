@@ -312,14 +312,20 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 			/* look for extensions that should be available */
 			if (false === $this->valid_cache_type[$wp_ffpc_config['cache_type']])
 				static::alert( sprintf ( __('%s cache backend selected but no PHP %s extension was found. Please activate the PHP %s extension or choose a different backend in %s.', 'wp-ffpc'), $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $wp_ffpc_config['cache_type'], $settings_link ), self::LOG_WARNING);
-			else if ( ( 'memcache' === $wp_ffpc_config['cache_type'] ) && ( true === $this->valid_cache_type['memcache'] ) ) {
+			else if ('memcache' === $wp_ffpc_config['cache_type']) {
 				/* get the current runtime configuration for memcache in PHP because Memcache in binary mode is really problematic */
 				$memcache_settings = ini_get_all( 'memcache' );
 				if ( isset( $memcache_settings['memcache.protocol'] ) ) {
 					$memcache_protocol = strtolower($memcache_settings['memcache.protocol']['local_value']);
 					if ( $memcache_protocol == 'binary' )
-						static::alert( __('WARNING: Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc'), self::LOG_WARNING);
+						static::alert( __('Memcache extension is configured to use binary mode. This is very buggy and the plugin will most probably not work correctly. <br />Please consider to change either to ASCII mode or to Memcached extension.', 'wp-ffpc'), self::LOG_WARNING);
 				}
+			}
+			else if ( ('memcached' === $wp_ffpc_config['cache_type']) && isset($this->options['authuser']) && ("" !== $this->options['authuser']) ) {
+				if (!ini_get('memcached.use_sasl'))
+					static::alert(__('You (or your browser\'s autocomplete) have entered a username for authentication. This will not work unless you enable memcached SASL in the PHP settings: add `memcached.use_sasl=1` to php.ini' , 'wp-ffpc'), self::LOG_WARNING);
+				else if (!$wp_ffpc_config['memcached_binary'])
+					static::alert(__('Memcached authentication with SASL requires the binary protocol. Please enable it on the <i>Backend Settings</i> tab.' , 'wp-ffpc'), self::LOG_WARNING);
 			}
 		}
 	}
@@ -780,18 +786,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					<?php _e('List of backends, with the following syntax: <br />- in case of TCP based connections, list the servers as host1:port1,host2:port2,... . Do not add trailing , and always separate host and port with : .<br />- for a unix socket enter: unix://[socket_path]', 'wp-ffpc'); ?></span>
 				</dd>
 
-				<h3><?php _e('Authentication ( only for SASL enabled Memcached or Redis')?></h3>
-				<?php
-					if ( ! ini_get('memcached.use_sasl') && ( !empty( $this->options['authuser'] ) || !empty( $this->options['authpass'] ) ) ) { ?>
-						<div class="error"><p><strong><?php _e( 'WARNING: you\'ve entered username and/or password for memcached authentication ( or your browser\'s autocomplete did ) which will not work unless you enable memcached sasl in the PHP settings: add `memcached.use_sasl=1` to php.ini' , 'wp-ffpc') ?></strong></p></div>
-				<?php } ?>
+				<h3><?php _e('Authentication (Redis, Memcached with SASL)')?></h3>
 				<dt>
 					<label for="authuser"><?php _e('Authentication: username', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
 					<input type="text" autocomplete="off" name="authuser" id="authuser" value="<?php echo $this->options['authuser']; ?>" />
 					<span class="description">
-					<?php _e('Username for authentication with backends', 'wp-ffpc'); ?></span>
+					<?php _e('Username for authentication with backends. Memcached with SASL requires binary mode (below).', 'wp-ffpc'); ?></span>
 				</dd>
 
 				<dt>

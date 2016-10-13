@@ -45,15 +45,12 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 		foreach ( $this->options['servers'] as $server_id => $server ) {
 			/* only add servers that does not exists already  in connection pool */
 			if ( !@array_key_exists($server_id , $servers_alive ) ) {
-
 				if ( $server['port'] != 0)
 					$this->connection->connect($server['host'], $server['port'] );
 				else
 					$this->connection->connect($server['host'] );
-
-				if ( isset($this->options['authpass']) && !empty($this->options['authpass']) )
-					$this->connection->auth ( $this->options['authpass'] );
-
+				if ( isset($this->options['authpass']) && ("" !== $this->options['authpass']) )
+					$this->connection->auth($this->options['authpass']);
 				$this->log ( sprintf( __translate__( '%s added', $this->plugin_constant ),  $server_id ) );
 			}
 		}
@@ -104,7 +101,7 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 	 * @param mixed $data Data to set
 	 *
 	 */
-	protected function _set ( &$key, &$data, &$expire ) {
+	protected function _set ( &$key, &$data, $expire ) {
 		$result = $this->connection->set ( $key, $data, $expire );
 
 		/* if storing failed, log the error code */

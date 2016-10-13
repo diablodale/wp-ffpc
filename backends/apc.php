@@ -52,7 +52,7 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 *
 	 * @return boolean APC store outcome
 	 */
-	protected  function _set (  &$key, &$data, &$expire ) {
+	protected  function _set (  &$key, &$data, $expire ) {
 		return apc_store( $key , $data , $expire );
 	}
 

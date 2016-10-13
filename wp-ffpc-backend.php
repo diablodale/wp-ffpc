@@ -178,8 +178,6 @@ abstract class WP_FFPC_Backend {
 	 * @param string $key Cache key to set with ( reference only, for speed )
 	 * @param mixed $data Data to set ( reference only, for speed )
 	 * @param optional param TTL (time to live) in seconds
-	 * BUGBUG there is incompatible different handling of the TTL value in the backend
-	 *        implementations, e.g. http://php.net/manual/en/memcached.expiration.php
 	 *
 	 * @return mixed $result status of set function
 	 */
@@ -190,16 +188,16 @@ abstract class WP_FFPC_Backend {
 		if ( ! $this->is_alive() )
 			return false;
 
-		/* expiration time is optional parameter value or based on type */
-		// BUGBUG empty() logic is inconsistent below
-		// BUGBUG using is_home() functions here is poor style and descreases perf; the expire should be passed into this function
+		// calculate value if optional expire TTL param is not provided; computationally expensive
 		if ( false === $expire ) {
-			if (( is_home() || is_feed() ) && isset($this->options['expire_home']))
-				$expire = (int) $this->options['expire_home'];
-			elseif (( is_tax() || is_category() || is_tag() || is_archive() ) && isset($this->options['expire_taxonomy']))
-				$expire = (int) $this->options['expire_taxonomy'];
+			if ((is_home() || is_feed()) && isset($this->options['expire_home']))
+				$expire = (int)$this->options['expire_home'];
+			elseif (is_archive() && isset($this->options['expire_taxonomy']))
+				$expire = (int)$this->options['expire_taxonomy'];
+			elseif (isset($this->options['expire']))
+				$expire = (int)$this->options['expire'];
 			else
-				$expire = empty ( $this->options['expire'] ) ? 0 : $this->options['expire'];
+				$expire = 0;
 		}
 
 		/* log the current action */
@@ -605,7 +603,7 @@ abstract class WP_FFPC_Backend {
 	abstract protected function _init();
 	abstract protected function _status();
 	abstract protected function _get( &$key );
-	abstract protected function _set( &$key, &$data, &$expire );
+	abstract protected function _set( &$key, &$data, $expire );
 	abstract protected function _flush();
 	abstract protected function _clear( &$keys );
 }
