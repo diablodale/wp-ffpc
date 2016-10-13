@@ -7,16 +7,16 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	/**
 	 * init apcu backend: test APCu availability and set alive status
 	 */
-	protected function _init () {
+	protected function _init() {
 		/* verify apcu functions exist, apcu extension is loaded */
-		if ( ! function_exists( 'apcu_cache_info' ) ) {
-			$this->log (  __translate__('APCu extension missing', 'wp-ffpc' ) );
+		if (!function_exists('apcu_cache_info')) {
+			$this->log(__translate__('APCu extension missing', 'wp-ffpc'));
 			return false;
 		}
 
 		/* verify apcu is working */
 		if ( @apcu_cache_info('user') != false ) {
-			$this->log (  __translate__('backend OK', 'wp-ffpc' ) );
+			$this->log(__translate__('backend OK', 'wp-ffpc'));
 			$this->alive = true;
 		}
 	}
@@ -27,7 +27,7 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 * @return boolean Aliveness status
 	 *
 	 */
-	protected function _status () {
+	protected function _status() {
 		$this->status = true;
 		return $this->alive;
 	}
@@ -40,8 +40,8 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 * @return mixed Fetched data based on key
 	 *
 	*/
-	protected function _get ( &$key ) {
-		return apcu_fetch( $key );
+	protected function _get(&$key) {
+		return apcu_fetch($key);
 	}
 
 	/**
@@ -52,8 +52,8 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 *
 	 * @return boolean APC store outcome
 	 */
-	protected function _set (  &$key, &$data, $expire ) {
-		return apcu_store( $key , $data , $expire );
+	protected function _set(&$key, &$data, $expire) {
+		return apcu_store($key, $data, $expire);
 	}
 
 
@@ -63,7 +63,7 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 * @return boolean APC flush outcome status
 	 *
 	*/
-	protected function _flush ( ) {
+	protected function _flush() {
 		return apcu_clear_cache();
 	}
 
@@ -72,18 +72,18 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 *
 	 * @param mixed $keys Keys to clear, string or array
 	*/
-	protected function _clear ( &$keys ) {
+	protected function _clear(&$keys) {
 		/* make an array if only one string is present, easier processing */
-		if ( !is_array ( $keys ) )
-			$keys = array ( $keys => true );
+		if (!is_array($keys))
+			$keys = array($keys => true);
 
-		foreach ( $keys as $key => $dummy ) {
-			if ( ! apcu_delete ( $key ) ) {
-				$this->log ( sprintf( __translate__( 'Failed to delete APC entry: %s', 'wp-ffpc' ),  $key ), self::LOG_WARNING );
-				//throw new Exception ( __translate__('Deleting APC entry failed with key ', 'wp-ffpc' ) . $key );
+		foreach ($keys as $key => $dummy) {
+			if (!apcu_delete($key)) {
+				$this->log(sprintf(__translate__('Failed to delete APC entry: %s', 'wp-ffpc'), $key), self::LOG_WARNING);
+				//throw new Exception(__translate__('Deleting APC entry failed with key ', 'wp-ffpc') . $key);
 			}
 			else {
-				$this->log ( sprintf( __translate__( 'APC entry delete: %s', 'wp-ffpc' ),  $key ) );
+				$this->log(sprintf(__translate__( 'APC entry delete: %s', 'wp-ffpc'), $key));
 			}
 		}
 	}

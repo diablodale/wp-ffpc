@@ -7,16 +7,16 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	/**
 	 * init apc backend: test APC availability and set alive status
 	 */
-	protected  function _init () {
+	protected function _init() {
 		/* verify apc functions exist, apc extension is loaded */
-		if ( ! function_exists( 'apc_cache_info' ) ) {
-			$this->log (  __translate__('APC extension missing', 'wp-ffpc' ) );
+		if (!function_exists('apc_cache_info')) {
+			$this->log(__translate__('APC extension missing', 'wp-ffpc'));
 			return false;
 		}
 
 		/* verify apc is working */
-		if ( apc_cache_info('user', true) ) {
-			$this->log (  __translate__('backend OK', 'wp-ffpc' ) );
+		if (apc_cache_info('user', true)) {
+			$this->log(__translate__('backend OK', 'wp-ffpc'));
 			$this->alive = true;
 		}
 	}
@@ -27,7 +27,7 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 * @return boolean Aliveness status
 	 *
 	 */
-	protected  function _status () {
+	protected function _status() {
 		$this->status = true;
 		return $this->alive;
 	}
@@ -40,8 +40,8 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 * @return mixed Fetched data based on key
 	 *
 	*/
-	protected  function _get ( &$key ) {
-		return apc_fetch( $key );
+	protected function _get(&$key) {
+		return apc_fetch($key);
 	}
 
 	/**
@@ -52,8 +52,8 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 *
 	 * @return boolean APC store outcome
 	 */
-	protected  function _set (  &$key, &$data, $expire ) {
-		return apc_store( $key , $data , $expire );
+	protected function _set(&$key, &$data, $expire) {
+		return apc_store($key, $data, $expire);
 	}
 
 
@@ -63,7 +63,7 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 * @return boolean APC flush outcome status
 	 *
 	*/
-	protected  function _flush ( ) {
+	protected function _flush() {
 		return apc_clear_cache('user');
 	}
 
@@ -72,18 +72,18 @@ class WP_FFPC_Backend_apc extends WP_FFPC_Backend {
 	 *
 	 * @param mixed $keys Keys to clear, string or array
 	*/
-	protected  function _clear ( &$keys ) {
+	protected function _clear(&$keys) {
 		/* make an array if only one string is present, easier processing */
-		if ( !is_array ( $keys ) )
-			$keys = array ( $keys => true );
+		if (!is_array($keys))
+			$keys = array($keys => true);
 
-		foreach ( $keys as $key => $dummy ) {
-			if ( ! apc_delete ( $key ) ) {
-				$this->log ( sprintf( __translate__( 'Failed to delete APC entry: %s', 'wp-ffpc' ),  $key ), self::LOG_WARNING );
-				//throw new Exception ( __translate__('Deleting APC entry failed with key ', $this->plugin_constant ) . $key );
+		foreach ($keys as $key => $dummy) {
+			if (!apc_delete($key)) {
+				$this->log(sprintf(__translate__( 'Failed to delete APC entry: %s', 'wp-ffpc'), $key), self::LOG_WARNING);
+				//throw new Exception(__translate__('Deleting APC entry failed with key ', $this->plugin_constant) . $key);
 			}
 			else {
-				$this->log ( sprintf( __translate__( 'APC entry delete: %s', 'wp-ffpc' ),  $key ) );
+				$this->log(sprintf(__translate__( 'APC entry delete: %s', 'wp-ffpc' ), $key));
 			}
 		}
 	}
