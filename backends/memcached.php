@@ -12,56 +12,49 @@ class WP_FFPC_Backend_memcached extends WP_FFPC_Backend {
 		}
 
 		/* check for existing server list, otherwise we cannot add backends */
-		if ( empty( $this->options['servers'] ) && !$this->alive ) {
+		if (empty($this->options['servers'])) {
 			$this->log( __translate__('Memcached servers list is empty, init failed', 'wp-ffpc' ), self::LOG_WARNING );
 			return false;
 		}
 
-		/* check is there's no backend connection yet */
-		if ( $this->connection === NULL ) {
-			$this->connection = new Memcached();
-
-			/* use binary and not compressed format, good for nginx and still fast */
-			$this->connection->setOption(Memcached::OPT_COMPRESSION, false);
-			if ($this->options['memcached_binary']){
-				$this->connection->setOption(Memcached::OPT_BINARY_PROTOCOL, true);
-				// handle SASL authentication; only works with binary protocol
-				if ( version_compare(phpversion('memcached'), '2.0.0', '>=') && (ini_get('memcached.use_sasl') == 1) &&
-					 isset($this->options['authuser']) && ("" !== $this->options['authuser']) &&
-					 isset($this->options['authpass']) && ("" !== $this->options['authpass']) ) {
-					$this->connection->setSaslAuthData( $this->options['authuser'], $this->options['authpass']);
-				}
-			}
-		}
-
-		/* check if initialization was success or not */
-		if ( $this->connection === NULL ) {
+		// create client cache object
+		$this->connection = new Memcached();
+		if (empty($this->connection)) {
 			$this->log(__translate__('error initializing Memcached PHP extension, exiting', 'wp-ffpc'));
 			return false;
 		}
 
-		/* check if we already have list of servers, only add server(s) if it's not already connected */
-		$servers_alive = array();
-		if (!empty($this->status)) {
-			$servers_alive = $this->connection->getServerList();
-			/* create check array if backend servers are already connected */
-			if (!empty($servers)) {
-				foreach ($servers_alive as $skey => $server) {
-					$skey = $server['host'] . ":" . $server['port'];
-					$servers_alive[$skey] = true;
-				}
+		/* use binary and not compressed format, good for nginx and still fast */
+		$this->connection->setOption(Memcached::OPT_COMPRESSION, false);
+		if ($this->options['memcached_binary']){
+			$this->connection->setOption(Memcached::OPT_BINARY_PROTOCOL, true);
+			// handle SASL authentication; only works with binary protocol
+			if ( version_compare(phpversion('memcached'), '2.0.0', '>=') && (ini_get('memcached.use_sasl') == 1) &&
+					isset($this->options['authuser']) && ("" !== $this->options['authuser']) &&
+					isset($this->options['authpass']) && ("" !== $this->options['authpass']) ) {
+				$this->connection->setSaslAuthData( $this->options['authuser'], $this->options['authpass']);
 			}
 		}
 
-		/* adding servers */
-		foreach ($this->options['servers'] as $server_id => $server) {
-			/* reset server status to unknown */
-			//$this->status[$server_id] = -1;
+		// create array of servers already in cache server pool
+		// BUGBUG if we don't have persistant connections or instances, we should not have any servers in the list; is this really needed?
+		$serverpool = $this->connection->getServerList();
+		if (is_array($serverpool)) {
+			foreach ($serverpool as $skey => $server) {
+				$poolkey = $server['host'] . ':' . $server['port'];
+				$serverpool[$poolkey] = true;
+			}
+		}
+		else {
+			$serverpool = array();
+		}
 
-			/* only add servers that does not exists already  in connection pool */
-			if (!@array_key_exists($server_id , $servers_alive)) {
+		/* add servers not already in the pool */
+		foreach ($this->options['servers'] as $server_id => $server) {
+			$newkey = $server['host'] . ':' . $server['port'];
+			if (!array_key_exists($newkey, $serverpool)) {
 				$this->connection->addServer($server['host'], $server['port']);
-				$this->log(sprintf(__translate__( '%s added', 'wp-ffpc' ), $server_id));
+				$this->log(sprintf(__translate__('%s added', 'wp-ffpc'), $server_id));
 			}
 		}
 
@@ -72,20 +65,20 @@ class WP_FFPC_Backend_memcached extends WP_FFPC_Backend {
 
 	/**
 	 * sets current backend alive status for Memcached servers
-	 *
+	 * BUGBUG this function does not work currectly when more than one server
 	 */
 	protected function _status() {
 		/* server status will be calculated by getting server stats */
 		$this->log(__translate__('checking server statuses', 'wp-ffpc'));
 		/* get server list from connection */
-		$servers =  $this->connection->getServerList();
+		$servers = $this->connection->getServerList();
 
 		foreach ( $servers as $server ) {
-			$server_id = $server['host'] . self::port_separator . $server['port'];
+			$server_id = $server['host'] . ':' . $server['port'];
 			/* reset server status to offline */
 			$this->status[$server_id] = 0;
-				if ($this->connection->set('wp-ffpc', time())) {
-					$this->log(sprintf(__translate__('%s server is up & running', 'wp-ffpc'), $server_id));
+			if ($this->connection->set('wp-ffpc', time())) {
+				$this->log(sprintf(__translate__('%s server is up & running', 'wp-ffpc'), $server_id));
 				$this->status[$server_id] = 1;
 			}
 		}

@@ -28,31 +28,13 @@ class WP_FFPC_Backend_redis extends WP_FFPC_Backend {
 			return false;
 		}
 
-		/* check if we already have list of servers, only add server(s) if it's not already connected *
-		$servers_alive = array();
-		if (!empty($this->status)) {
-			$servers_alive = $this->connection->getServerList();
-			/* create check array if backend servers are already connected *
-			if (!empty($servers)) {
-				foreach ($servers_alive as $skey => $server) {
-					$skey =  $server['host'] . ":" . $server['port'];
-					$servers_alive[$skey] = true;
-				}
-			}
-		}
-
 		/* adding servers */
+		// TODO consider using pconnect()
 		foreach ($this->options['servers'] as $server_id => $server) {
-			/* only add servers that does not exists already  in connection pool */
-			if (!@array_key_exists($server_id, $servers_alive)) {
-				if ($server['port'] != 0)
-					$this->connection->connect($server['host'], $server['port']);
-				else
-					$this->connection->connect($server['host']);
-				if ( isset($this->options['authpass']) && ("" !== $this->options['authpass']) )
-					$this->connection->auth($this->options['authpass']);
-				$this->log(sprintf(__translate__('%s added', $this->plugin_constant), $server_id));
-			}
+			$this->connection->connect($server['host'], $server['port']);
+			if ( isset($this->options['authpass']) && ("" !== $this->options['authpass']) )
+				$this->connection->auth($this->options['authpass']);
+			$this->log(sprintf(__translate__('%s added', $this->plugin_constant), $server_id));
 		}
 
 		/* backend is now alive */

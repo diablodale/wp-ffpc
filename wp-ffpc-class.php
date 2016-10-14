@@ -170,6 +170,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 
 		// cache invalidation hooks
 		// BUGBUG add in site url changes, permalink changes, blogroll, etc.
+		// BUGBUG don't add hooks if backend isn't alive
 		add_action( 'switch_theme', array( &$this->backend , 'clear' ), 0 );
 		// delete post, pages, attachments, etc. with a two step workaround for WP 3.x bug and
 		// overall WP limitation; save the WP_Post before delete and then clear cache after a successful delete
@@ -781,9 +782,14 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 					<label for="hosts"><?php _e('Hosts', 'wp-ffpc'); ?></label>
 				</dt>
 				<dd>
-					<input type="text" name="hosts" id="hosts" value="<?php echo $this->options['hosts']; ?>" />
+					<input type="text" size=50 name="hosts" id="hosts" value="<?php echo $this->options['hosts']; ?>" />
 					<span class="description">
-					<?php _e('List of backends, with the following syntax: <br />- in case of TCP based connections, list the servers as host1:port1,host2:port2,... . Do not add trailing , and always separate host and port with : .<br />- for a unix socket enter: unix://[socket_path]', 'wp-ffpc'); ?></span>
+					<?php
+						_e('List of cache servers separated by commas <code>,</code> and no whitespace, e.g. server1,server2,server3,&hellip;', 'wp-ffpc');
+						_e('<br/>- using IP/hostname: type the IP address or hostname, a colon <code>:</code>, then the port; e.g. <code>192.11.24.16:11211,memcachehost7:11211</code>', 'wp-ffpc');
+						_e('<br/>- using unix socket: type the prefix <code>unix://</code> followed by the full path; e.g. <code>unix:///var/www/tmp/memcached.sock</code>', 'wp-ffpc');
+						_e('<br/>You can combine formats; e.g. <code>memcachedsvr27:11211,unix:///var/www/tmp/memcached.sock,114.12.89.101:11211</code>', 'wp-ffpc');
+					?></span>
 				</dd>
 
 				<h3><?php _e('Authentication (Redis, Memcached with SASL)')?></h3>
@@ -802,7 +808,7 @@ class WP_FFPC extends WP_FFPC_ABSTRACT {
 				<dd>
 					<input type="password" autocomplete="off" name="authpass" id="authpass" value="<?php echo $this->options['authpass']; ?>" />
 					<span class="description">
-					<?php _e('Password for authentication with for backends - WARNING, the password will be stored in an unsecure format!', 'wp-ffpc'); ?></span>
+					<?php _e('Password for authentication with backends. WARNING, the password will be stored in an unsecure format!', 'wp-ffpc'); ?></span>
 				</dd>
 
 				<h3><?php _e('Memcached specific settings')?></h3>

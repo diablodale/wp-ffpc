@@ -7,57 +7,55 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 	 * init memcache backend
 	 */
 	protected function _init() {
-		/* Memcached class does not exist, Memcache extension is not available */
+		/* Memcache class does not exist, Memcache extension is not available */
 		if (!class_exists('Memcache')) {
 			$this->log(__translate__('PHP Memcache extension missing', 'wp-ffpc'), self::LOG_WARNING);
 			return false;
 		}
 
 		/* check for existing server list, otherwise we cannot add backends */
-		if ( empty($this->options['servers']) && !$this->alive ) {
+		if (empty($this->options['servers'])) {
 			$this->log(__translate__('servers list is empty, init failed', 'wp-ffpc'), self::LOG_WARNING);
 			return false;
 		}
 
-		/* check is there's no backend connection yet */
-		if ($this->connection === NULL)
-			$this->connection = new Memcache();
-
-		/* check if initialization was success or not */
-		if ($this->connection === NULL) {
+		// create client cache object
+		$this->connection = new Memcache();
+		if (empty($this->connection)) {
 			$this->log(__translate__('error initializing Memcache PHP extension, exiting', 'wp-ffpc'));
 			return false;
 		}
 
 		/* adding servers */
+		// BUGBUG multiple connect() calls does not create a pool and instead replaces any previously setup connection; the below is very problematic
 		foreach ($this->options['servers'] as $server_id => $server) {
-				/* in case of unix socket */
-			if ($server['port'] === 0)
-				$this->status[$server_id] = $this->connection->connect('unix:/' . $server['host']);
+			$this->status[$server_id] = false;
+			if (0 === $server['port']) /* in case of unix socket */
+				$this->status[$server_id] = @$this->connection->connect('unix://' . $server['host'], 0);
 			else
-				$this->status[$server_id] = $this->connection->connect($server['host'], $server['port']);
-			$this->log(sprintf(__translate__('%s added', 'wp-ffpc'), $server_id));
+				$this->status[$server_id] = @$this->connection->connect($server['host'], $server['port']);
+			if (0 == $this->status[$server_id])
+				$this->log(sprintf(__translate__('%s server is down', 'wp-ffpc'), $server_id));
+			else
+				$this->log(sprintf(__translate__('%s added', 'wp-ffpc'), $server_id));
 		}
 
 		/* backend is now alive */
 		$this->alive = true;
-		$this->_status();
 	}
 
 	/**
-	 * check current backend alive status for Memcached
-	 *
+	 * check current backend alive status for Memcache
+	 * BUGBUG this status check is not effective in combination with the above init bugs; the status is not updated with the below methods, see http://php.net/manual/en/memcache.getserverstatus.php
 	 */
 	protected function _status() {
-		/* server status will be calculated by getting server stats */
-		$this->log(__translate__('checking server statuses', 'wp-ffpc'));
 		/* get servers statistic from connection */
 		foreach ($this->options['servers'] as $server_id => $server) {
-			if ($server['port'] === 0)
-				$this->status[$server_id] = $this->connection->getServerStatus($server['host'], 11211);
+			if (0 === $server['port']) /* in case of unix socket */
+				$this->status[$server_id] = $this->connection->getServerStatus('unix://' . $server['host'], 0);
 			else
 				$this->status[$server_id] = $this->connection->getServerStatus($server['host'], $server['port']);
-			if ($this->status[$server_id] == 0)
+			if (0 == $this->status[$server_id])
 				$this->log(sprintf(__translate__('%s server is down', 'wp-ffpc'), $server_id));
 			else
 				$this->log(sprintf(__translate__('%s server is up & running', 'wp-ffpc'), $server_id));
@@ -65,7 +63,7 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 	}
 
 	/**
-	 * get function for Memcached backend
+	 * get function for Memcache backend
 	 *
 	 * @param string $key Key to get values for
 	 *
@@ -75,14 +73,14 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 	}
 
 	/**
-	 * Set function for Memcached backend
+	 * Set function for Memcache backend
 	 *
 	 * @param string $key Key to set with
 	 * @param mixed $data Data to set
 	 *
 	 */
 	protected function _set(&$key, &$data, $expire) {
-		// convert to consistent expire TTL due to 30 day threshold http://php.net/manual/en/memcached.expiration.php
+		// convert to consistent expire TTL due to 30 day threshold http://php.net/manual/en/memcache.set.php
 		if ($expire > 2592000) $expire = time() + $expire;
 		$result = $this->connection->set($key, $data, 0, $expire);
 		return $result;
@@ -90,15 +88,14 @@ class WP_FFPC_Backend_memcache extends WP_FFPC_Backend {
 
 	/**
 	 *
-	 * Flush memcached entries
+	 * Flush memcache entries
 	 */
 	protected function _flush() {
 		return $this->connection->flush();
 	}
 
-
 	/**
-	 * Removes entry from Memcached or flushes Memcached storage
+	 * Removes entry from Memcache or flushes Memcache storage
 	 *
 	 * @param mixed $keys String / array of string of keys to delete entries with
 	*/

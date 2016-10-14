@@ -28,8 +28,8 @@ class WP_FFPC_Backend_apcu extends WP_FFPC_Backend {
 	 *
 	 */
 	protected function _status() {
-		$this->status = true;
-		return $this->alive;
+
+		$this->status = array('localhost:0' => ($this->alive ? 1 : 0));
 	}
 
 	/**

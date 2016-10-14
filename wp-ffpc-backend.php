@@ -146,7 +146,6 @@ abstract class WP_FFPC_Backend {
 		return $key;
 	}
 
-
 	/**
 	 * public get function, transparent proxy to internal function based on backend
 	 *
@@ -155,20 +154,11 @@ abstract class WP_FFPC_Backend {
 	 * @return mixed False when entry not found or entry value on success
 	 */
 	public function get( &$key ) {
-		/* look for backend aliveness, exit on inactive backend */
-		if ( ! $this->is_alive() ) {
-			$this->log ('WARNING: Backend offline');
-			return false;
-		}
-
-		/* log the current action */
-		$this->log( __translate__("get entry: $key", 'wp-ffpc') );
-
+		if (!$this->alive) return false;
+		$this->log(__translate__("get entry: $key", 'wp-ffpc'));
 		$result = $this->_get( $key );
-
 		if ( $result === false || $result === null )
 			$this->log( __translate__("failed to get entry: $key", 'wp-ffpc') );
-
 		return $result;
 	}
 
@@ -182,11 +172,7 @@ abstract class WP_FFPC_Backend {
 	 * @return mixed $result status of set function
 	 */
 	public function set( &$key, &$data, $expire = false ) {
-		/* look for backend aliveness, exit on inactive backend */
-		// TODO re-evaluate this alive check. Doing it causes a 2x increase in cache traffic isalive() + set()
-		// it might be better to just do a set() since they both will return false
-		if ( ! $this->is_alive() )
-			return false;
+		if (!$this->alive) return false;
 
 		// calculate value if optional expire TTL param is not provided; computationally expensive
 		if ( false === $expire ) {
@@ -216,6 +202,7 @@ abstract class WP_FFPC_Backend {
 	// TODO add status=private and password status=publish handling
 	// TODO add custom post types https://codex.wordpress.org/Post_Types#Custom_Post_Types_in_the_Main_Query
 	public function clear_post_on_redepublish( $post_id, $post_after, $post_before ) {
+		if (!$this->alive) return false;
 		// ignore revisions and nav menus
 		if ( ('revision' === $post_before->post_type) || ('nav_menu_item' === $post_before->post_type) ) 
 			return;
@@ -236,7 +223,8 @@ abstract class WP_FFPC_Backend {
 	// TODO add status=private and password status=publish handling
 	private static $delete_queue = array();
 	public function clear_post_before_forcedelete( $post_id ) {
-		error_log('clear_post_before_forcedelete()');
+		error_log('clear_post_before_forcedelete()');	// BUGBUG remove this
+		if (!$this->alive) return false;
 		// ignore duplicate calls that can occur in WP 3.x
 		if ( isset(self::$delete_queue[$post_id]) )
 			return;
@@ -257,7 +245,8 @@ abstract class WP_FFPC_Backend {
 
 	// clear cache for posts/attachments/pages that were not already in the trash (step 2)
 	public function clear_post_after_forcedelete( $post_id ) {
-		error_log('clear_post_after_forcedelete()');
+		error_log('clear_post_after_forcedelete()');	// BUGBUG remove this
+		if (!$this->alive) return false;
 		// ignore duplicate calls that can occur in WP 3.x and completed deletes
 		if ( empty(self::$delete_queue[$post_id]) )
 			return;
@@ -277,15 +266,13 @@ abstract class WP_FFPC_Backend {
 	 */
 	// BUGBUG on transitions, often getting revisions which have links like: http://centos6/2016/09/26-revision-4/
 	public function clear( $post_id = false, $force = false ) {
+		if (!$this->alive) return false;
+
 		/* exit if no post_id is specified */
 		if ( !is_int($post_id) && (true !== $force ) ) {
 			$this->log( __translate__('not clearing unidentified post ', 'wp-ffpc'), self::LOG_WARNING );
 			return false;
 		}
-
-		/* look for backend aliveness, exit on inactive backend */
-		if ( !$this->is_alive() )
-			return false;
 
 		/* if invalidation method is set to full flush cache; intentionally test against integer 0 */
 		if ( (true === $force) || ($this->options['invalidation_method'] == 0) ) {
@@ -498,62 +485,40 @@ abstract class WP_FFPC_Backend {
 	 *
 	 */
 	public function status() {
-
-		/* look for backend aliveness, exit on inactive backend */
-		if ( ! $this->is_alive() )
-			return false;
-
-		$internal = $this->_status();
+		if (!$this->alive) return false;
+		$this->_status();
 		return $this->status;
 	}
 
-	/**
-	 * function to check backend aliveness
-	 *
-	 * @return boolean true if backend is alive, false if not
-	 *
-	 */
-	protected function is_alive() {
-		if ( ! $this->alive ) {
-			$this->log (  __translate__('backend is not active, exiting function ', 'wp-ffpc') . __FUNCTION__, self::LOG_WARNING );
-			return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * split hosts string to backend servers
-	 *
-	 *
-	 */
+	// split hosts string from config to array of backend servers
+	// TODO parsing and validation should be done once in the save/migration of options, not done on every web request
 	protected function set_servers() {
-		if ( empty ($this->options['hosts']) )
+		if (empty($this->options['hosts']))
 			return false;
-
-		/* replace servers array in config according to hosts field */
-		$servers = explode( self::host_separator , $this->options['hosts']);
-
-		$options['servers'] = array();
-
+		$servers = explode(self::host_separator, $this->options['hosts']);
+		$this->options['servers'] = array();
 		foreach ( $servers as $snum => $sstring ) {
-
-			if ( stristr($sstring, 'unix://' ) ) {
-				$host = str_replace('unix:/','',$sstring);
+			if (0 === stripos($sstring, 'unix:///')) {
+				$host = substr($sstring, 7);
+				$port = 0;
+			}
+			else if ('/' === $sstring[0]) {
+				$host = $sstring;
 				$port = 0;
 			}
 			else {
-				$separator = strpos( $sstring , self::port_separator );
-				$host = substr( $sstring, 0, $separator );
-				$port = substr( $sstring, $separator + 1 );
+				$separator = strpos($sstring, self::port_separator);
+				if (false === $separator) continue;
+				if (0 === $separator) continue;
+				$host = substr($sstring, 0, $separator);
+				$port = substr($sstring, $separator + 1);
+				if (empty($port)) continue;
 			}
-
 			$this->options['servers'][$sstring] = array (
 				'host' => $host,
 				'port' => $port
 			);
 		}
-
 	}
 
 	/**
